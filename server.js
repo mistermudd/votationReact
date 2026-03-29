@@ -6,6 +6,119 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db');
 
+const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
+const GITHUB_BACKUP_GIST_ID = process.env.GITHUB_BACKUP_GIST_ID || '';
+const BACKUP_INTERVAL_MS = 10 * 60 * 1000; // ogni 10 minuti
+
+async function backupToGist() {
+  if (!GITHUB_BACKUP_TOKEN || !GITHUB_BACKUP_GIST_ID) return false;
+  try {
+    const data = {
+      backed_up_at: new Date().toISOString(),
+      lineup: db.prepare('SELECT * FROM lineup').all(),
+      sessions: db.prepare('SELECT * FROM sessions').all(),
+      votes: db.prepare('SELECT * FROM votes').all(),
+      runoff_sessions: db.prepare('SELECT * FROM runoff_sessions').all(),
+      runoff_votes: db.prepare('SELECT * FROM runoff_votes').all()
+    };
+    const response = await fetch(`https://api.github.com/gists/${GITHUB_BACKUP_GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'votation-backup'
+      },
+      body: JSON.stringify({
+        files: { 'votation-backup.json': { content: JSON.stringify(data, null, 2) } }
+      })
+    });
+    if (response.ok) {
+      console.log('[backup] Backup Gist completato:', data.backed_up_at);
+      return true;
+    }
+    console.error('[backup] Gist PATCH fallito:', response.status);
+    return false;
+  } catch (err) {
+    console.error('[backup] Errore backup Gist:', err.message);
+    return false;
+  }
+}
+
+async function restoreFromGist() {
+  if (!GITHUB_BACKUP_TOKEN || !GITHUB_BACKUP_GIST_ID) return;
+  const count = db.prepare('SELECT COUNT(*) AS cnt FROM lineup').get();
+  if (count.cnt > 0) {
+    console.log('[backup] DB non vuoto, ripristino saltato.');
+    return;
+  }
+  try {
+    const response = await fetch(`https://api.github.com/gists/${GITHUB_BACKUP_GIST_ID}`, {
+      headers: {
+        Authorization: `Bearer ${GITHUB_BACKUP_TOKEN}`,
+        'User-Agent': 'votation-backup'
+      }
+    });
+    if (!response.ok) {
+      console.error('[backup] Lettura Gist fallita:', response.status);
+      return;
+    }
+    const gist = await response.json();
+    const file = gist.files && gist.files['votation-backup.json'];
+    if (!file || !file.content) {
+      console.log('[backup] Nessun backup trovato nel Gist.');
+      return;
+    }
+    const data = JSON.parse(file.content);
+    const restore = db.transaction(() => {
+      for (const r of data.lineup || []) {
+        db.prepare(
+          'INSERT OR IGNORE INTO lineup (id, artist_name, song_title, performance_order, created_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(r.id, r.artist_name, r.song_title, r.performance_order, r.created_at);
+      }
+      for (const r of data.sessions || []) {
+        db.prepare(
+          'INSERT OR IGNORE INTO sessions (id, lineup_id, is_open, started_at, ended_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(r.id, r.lineup_id, r.is_open, r.started_at, r.ended_at);
+      }
+      for (const r of data.votes || []) {
+        db.prepare(
+          'INSERT OR IGNORE INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).run(r.id, r.lineup_id, r.role, r.voter_name, r.score, r.created_at, r.updated_at);
+      }
+      for (const r of data.runoff_sessions || []) {
+        db.prepare(
+          'INSERT OR IGNORE INTO runoff_sessions (id, first_lineup_id, second_lineup_id, is_open, created_at, closed_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(r.id, r.first_lineup_id, r.second_lineup_id, r.is_open, r.created_at, r.closed_at);
+      }
+      for (const r of data.runoff_votes || []) {
+        db.prepare(
+          'INSERT OR IGNORE INTO runoff_votes (id, runoff_session_id, role, voter_name, selected_lineup_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(r.id, r.runoff_session_id, r.role, r.voter_name, r.selected_lineup_id, r.created_at);
+      }
+    });
+    restore();
+    // Reset SQLite autoincrement sequences after bulk insert
+    db.exec(`
+      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM lineup) WHERE name = 'lineup';
+      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM sessions) WHERE name = 'sessions';
+      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM votes) WHERE name = 'votes';
+      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM runoff_sessions) WHERE name = 'runoff_sessions';
+      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM runoff_votes) WHERE name = 'runoff_votes';
+    `);
+    console.log('[backup] Ripristino da Gist completato. Backed up at:', data.backed_up_at || 'N/A');
+  } catch (err) {
+    console.error('[backup] Errore ripristino Gist:', err.message);
+  }
+}
+
+// Avvia ripristino async al boot (non blocca l'avvio del server)
+restoreFromGist().catch(() => {});
+
+// Backup periodico ogni 10 minuti
+if (GITHUB_BACKUP_TOKEN && GITHUB_BACKUP_GIST_ID) {
+  setInterval(() => backupToGist().catch(() => {}), BACKUP_INTERVAL_MS);
+}
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
@@ -1289,6 +1402,22 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
   });
 });
 
+// Admin: backup manuale su Gist
+app.post('/api/admin/backup-now', async (req, res) => {
+  const role = getAccessRole(req);
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Accesso negato.' });
+  }
+  if (!GITHUB_BACKUP_TOKEN || !GITHUB_BACKUP_GIST_ID) {
+    return res.status(503).json({ error: 'Backup Gist non configurato (manca GITHUB_BACKUP_TOKEN o GITHUB_BACKUP_GIST_ID).' });
+  }
+  const ok = await backupToGist();
+  if (ok) {
+    return res.json({ ok: true, message: 'Backup completato.' });
+  }
+  return res.status(500).json({ error: 'Backup fallito. Controlla i log.' });
+});
+
 // Admin: download a copy of the SQLite DB (safety net before a deploy)
 app.get('/api/admin/db-backup', (req, res) => {
   const role = getAccessRole(req);
@@ -1327,16 +1456,20 @@ const httpServer_instance = httpServer.listen(PORT, '0.0.0.0', () => {
 // Graceful shutdown: on SIGTERM (used by Render during redeploy)
 // close HTTP server first (stop accepting new connections), then close DB
 process.on('SIGTERM', () => {
-  console.log('SIGTERM ricevuto: spegnimento graceful in corso...');
-  httpServer_instance.close(() => {
-    console.log('Server HTTP chiuso.');
-    try {
-      db.close();
-    } catch (_err) {
-      // already closed
-    }
-    process.exit(0);
-  });
-  // Force exit after 10 seconds if close takes too long
-  setTimeout(() => process.exit(0), 10000).unref();
+  console.log('SIGTERM ricevuto: backup + spegnimento graceful in corso...');
+  backupToGist()
+    .catch(() => {})
+    .finally(() => {
+      httpServer_instance.close(() => {
+        console.log('Server HTTP chiuso.');
+        try {
+          db.close();
+        } catch (_err) {
+          // already closed
+        }
+        process.exit(0);
+      });
+      // Force exit after 10 seconds if close takes too long
+      setTimeout(() => process.exit(0), 10000).unref();
+    });
 });

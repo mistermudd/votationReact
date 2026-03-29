@@ -29,3 +29,7 @@ services:
         sync: false
       - key: REGIA_PIN
         sync: false
+      - key: GITHUB_BACKUP_TOKEN
+        sync: false
+      - key: GITHUB_BACKUP_GIST_ID
+        sync: false
