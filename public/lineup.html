@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lineup - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+      <a href="/index.html">Cambia ruolo</a>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Gestione Lineup</h1>
+        <p>Inserisci artista, brano e ordine di esecuzione.</p>
+      </section>
+
+      <section class="card">
+        <h2>Nuovo cantante</h2>
+        <div class="grid grid-2">
+          <div>
+            <label for="artistName">Nome artista</label>
+            <input id="artistName" type="text" placeholder="Es: Alessia" />
+          </div>
+          <div>
+            <label for="songTitle">Brano</label>
+            <input id="songTitle" type="text" placeholder="Es: Vento nuovo" />
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; max-width: 220px;">
+          <label for="performanceOrder">Ordine esibizione</label>
+          <input id="performanceOrder" type="number" min="1" placeholder="Es: 3" />
+        </div>
+
+        <button id="saveLineupBtn" class="button button-primary" style="margin-top: 12px;">
+          Salva in lineup
+        </button>
+        <p id="feedback"></p>
+      </section>
+
+      <section class="card">
+        <h2>Ordine corrente</h2>
+        <div id="lineupList"></div>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const lineupList = document.getElementById('lineupList');
+      const feedback = document.getElementById('feedback');
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function renderLineup(payload) {
+        const lineup = payload.lineup || [];
+
+        if (!lineup.length) {
+          lineupList.innerHTML = '<p>Nessun artista in lineup.</p>';
+          return;
+        }
+
+        lineupList.innerHTML = lineup
+          .map(
+            (row) =>
+              `<div class="lineup-row">
+                <input data-field="order" data-id="${row.id}" type="number" min="1" value="${row.performance_order}" />
+                <input data-field="artist" data-id="${row.id}" type="text" value="${escapeHtml(row.artist_name)}" />
+                <input data-field="song" data-id="${row.id}" type="text" value="${escapeHtml(row.song_title || '')}" />
+                <button class="button button-secondary" data-action="save" data-id="${row.id}">Modifica</button>
+                <button class="button button-danger" data-action="delete" data-id="${row.id}">Elimina</button>
+              </div>`
+          )
+          .join('');
+      }
+
+      async function loadLineup() {
+        const response = await fetch('/api/lineup');
+        const data = await response.json();
+        renderLineup(data);
+      }
+
+      document.getElementById('saveLineupBtn').addEventListener('click', async () => {
+        const artistName = document.getElementById('artistName').value.trim();
+        const songTitle = document.getElementById('songTitle').value.trim();
+        const performanceOrder = Number(document.getElementById('performanceOrder').value);
+
+        if (!artistName || !performanceOrder) {
+          feedback.textContent = 'Nome artista e ordine sono obbligatori.';
+          return;
+        }
+
+        const response = await fetch('/api/lineup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artistName, songTitle, performanceOrder })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Errore nel salvataggio lineup.';
+          return;
+        }
+
+        feedback.textContent = 'Cantante inserito in lineup.';
+        document.getElementById('artistName').value = '';
+        document.getElementById('songTitle').value = '';
+        document.getElementById('performanceOrder').value = '';
+      });
+
+      lineupList.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+          return;
+        }
+
+        const action = target.getAttribute('data-action');
+        const id = Number(target.getAttribute('data-id'));
+        if (!action || !id) {
+          return;
+        }
+
+        if (action === 'delete') {
+          const response = await fetch(`/api/lineup/${id}`, { method: 'DELETE' });
+          const data = await response.json();
+          feedback.textContent = response.ok
+            ? 'Elemento eliminato dalla lineup.'
+            : data.error || 'Errore eliminazione elemento.';
+          return;
+        }
+
+        const orderInput = lineupList.querySelector(`[data-field="order"][data-id="${id}"]`);
+        const artistInput = lineupList.querySelector(`[data-field="artist"][data-id="${id}"]`);
+        const songInput = lineupList.querySelector(`[data-field="song"][data-id="${id}"]`);
+
+        const performanceOrder = Number(orderInput && orderInput.value);
+        const artistName = artistInput ? artistInput.value.trim() : '';
+        const songTitle = songInput ? songInput.value.trim() : '';
+
+        if (!artistName || !performanceOrder) {
+          feedback.textContent = 'Nome artista e ordine sono obbligatori.';
+          return;
+        }
+
+        const response = await fetch(`/api/lineup/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artistName, songTitle, performanceOrder })
+        });
+
+        const data = await response.json();
+        feedback.textContent = response.ok
+          ? 'Elemento lineup aggiornato.'
+          : data.error || 'Errore aggiornamento elemento.';
+      });
+
+      socket.on('lineup:updated', (payload) => renderLineup(payload));
+
+      loadLineup();
+    </script>
+  </body>
+</html>

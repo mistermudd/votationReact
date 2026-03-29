@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Regia - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+      <a href="/index.html">Cambia ruolo</a>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Pannello Regia</h1>
+        <p>Da qui avvii la votazione dell'artista in scaletta.</p>
+      </section>
+
+      <section class="card">
+        <h2>Attiva esibizione</h2>
+        <label for="lineupSelect">Artista in lineup</label>
+        <select id="lineupSelect"></select>
+
+        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+          <button id="startVoting" class="button button-secondary">Avvia votazione</button>
+          <button id="closeVoting" class="button button-danger">Chiudi votazione</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Stato live</h2>
+        <p id="liveArtist">Nessun artista selezionato.</p>
+        <p id="liveStatus">Votazione chiusa.</p>
+        <p id="liveCount">Voti totali: 0</p>
+        <p id="liveAverage">Media totale: 0</p>
+        <p id="judgeStats">Giudici: 0 voti | media 0</p>
+        <p id="publicStats">Pubblico: 0 voti | media 0</p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const lineupSelect = document.getElementById('lineupSelect');
+      const liveArtist = document.getElementById('liveArtist');
+      const liveStatus = document.getElementById('liveStatus');
+      const liveCount = document.getElementById('liveCount');
+      const liveAverage = document.getElementById('liveAverage');
+      const judgeStats = document.getElementById('judgeStats');
+      const publicStats = document.getElementById('publicStats');
+
+      function renderLineup(payload) {
+        const lineup = payload.lineup || [];
+        lineupSelect.innerHTML = '';
+
+        lineup.forEach((row) => {
+          const option = document.createElement('option');
+          option.value = String(row.id);
+          option.textContent = `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
+          lineupSelect.appendChild(option);
+        });
+      }
+
+      function renderLive(payload) {
+        const artist = payload.currentArtist || '';
+        const open = Boolean(payload.isOpenForVoting);
+        const paused = Boolean(payload.isPaused);
+        const stats = payload.stats || {
+          total: { count: 0, average: 0 },
+          byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } }
+        };
+
+        liveArtist.textContent = artist
+          ? `Artista corrente: ${artist}`
+          : 'Nessun artista selezionato.';
+        liveStatus.textContent = open
+          ? 'Votazione aperta.'
+          : paused
+            ? 'Votazione in pausa.'
+            : 'Votazione chiusa.';
+        liveCount.textContent = `Voti totali: ${stats.total.count || 0}`;
+        liveAverage.textContent = `Media totale: ${stats.total.average || 0}`;
+        judgeStats.textContent = `Giudici: ${stats.byRole.judge.count || 0} voti | media ${stats.byRole.judge.average || 0}`;
+        publicStats.textContent = `Pubblico: ${stats.byRole.public.count || 0} voti | media ${stats.byRole.public.average || 0}`;
+      }
+
+      document.getElementById('startVoting').addEventListener('click', async () => {
+        const lineupId = Number(lineupSelect.value);
+
+        if (!lineupId) {
+          return;
+        }
+
+        await fetch('/api/lineup/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lineupId })
+        });
+      });
+
+      document.getElementById('closeVoting').addEventListener('click', async () => {
+        await fetch('/api/close-voting', {
+          method: 'POST' }
+        );
+      });
+
+      socket.on('state:init', (payload) => renderLive(payload));
+      socket.on('state:updated', (payload) => renderLive(payload));
+      socket.on('lineup:updated', (payload) => renderLineup(payload));
+      socket.on('artist:changed', (payload) => renderLive(payload));
+      socket.on('voting:closed', (payload) => renderLive(payload));
+      socket.on('vote:updated', (payload) => renderLive(payload));
+    </script>
+  </body>
+</html>

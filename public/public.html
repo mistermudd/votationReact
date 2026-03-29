@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pubblico - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Voto Pubblico</h1>
+        <p id="artistLabel">In attesa dell'artista...</p>
+        <p id="songLabel"></p>
+        <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
+      </section>
+
+      <section class="card">
+        <h2>Invia il tuo voto</h2>
+        <p>Punteggio da 1 a 10:</p>
+        <div id="scoreButtons" class="score-buttons"></div>
+
+        <button id="sendVoteBtn" class="button button-primary" style="margin-top: 12px;">
+          Vota cantante
+        </button>
+        <p id="feedback"></p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const artistLabel = document.getElementById('artistLabel');
+      const songLabel = document.getElementById('songLabel');
+      const statusChip = document.getElementById('statusChip');
+      const scoreButtons = document.getElementById('scoreButtons');
+      const sendVoteBtn = document.getElementById('sendVoteBtn');
+      const feedback = document.getElementById('feedback');
+      const votedBadge = document.getElementById('votedBadge');
+      const PUBLIC_DEVICE_KEY = 'public-voter-device-id';
+
+      let selectedScore = null;
+      let canVote = false;
+      let isSubmitting = false;
+      let currentLineupId = null;
+      let currentArtist = '';
+      let isOpenForVoting = false;
+
+      function getOrCreateDeviceId() {
+        let deviceId = localStorage.getItem(PUBLIC_DEVICE_KEY);
+        if (!deviceId) {
+          deviceId = `pub-${Math.random().toString(36).slice(2, 14)}`;
+          localStorage.setItem(PUBLIC_DEVICE_KEY, deviceId);
+        }
+        return deviceId;
+      }
+
+      async function refreshVoteAvailability() {
+        const baseCanVote = isOpenForVoting && Boolean(currentArtist);
+        let alreadyVoted = false;
+
+        if (currentLineupId) {
+          const deviceId = encodeURIComponent(getOrCreateDeviceId());
+          const statusResponse = await fetch(`/api/public/vote-status?deviceId=${deviceId}`);
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            alreadyVoted =
+              Boolean(statusData.hasVoted) && Number(statusData.currentLineupId) === Number(currentLineupId);
+          }
+        }
+
+        canVote = baseCanVote && !alreadyVoted;
+        statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
+        statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
+
+        if (alreadyVoted && currentArtist) {
+          feedback.textContent = 'Hai gia votato questa esibizione.';
+          votedBadge.style.display = 'block';
+        } else {
+          votedBadge.style.display = 'none';
+        }
+      }
+
+      for (let i = 1; i <= 10; i += 1) {
+        const btn = document.createElement('button');
+        btn.className = 'score-btn';
+        btn.textContent = String(i);
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+          selectedScore = i;
+          document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+        scoreButtons.appendChild(btn);
+      }
+
+      function renderState(payload) {
+        const artist = payload.currentArtist || '';
+        const song = payload.currentSong || '';
+        const open = Boolean(payload.isOpenForVoting);
+        currentArtist = artist;
+        isOpenForVoting = open;
+        currentLineupId = payload.currentLineupId || null;
+
+        artistLabel.textContent = artist ? `Artista in esibizione: ${artist}` : "In attesa dell'artista...";
+        songLabel.textContent = song ? `Brano: ${song}` : '';
+
+        refreshVoteAvailability();
+      }
+
+      socket.on('state:init', (payload) => renderState(payload));
+      socket.on('state:updated', (payload) => renderState(payload));
+      socket.on('artist:changed', (payload) => {
+        selectedScore = null;
+        feedback.textContent = '';
+        document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        renderState(payload);
+      });
+      socket.on('voting:closed', (payload) => renderState(payload));
+      socket.on('votes:cleared', (payload) => {
+        feedback.textContent = '';
+        renderState(payload);
+      });
+
+      sendVoteBtn.addEventListener('click', async () => {
+        if (isSubmitting) {
+          return;
+        }
+
+        if (!canVote) {
+          feedback.textContent = 'Votazione non attiva.';
+          return;
+        }
+
+        if (!selectedScore) {
+          feedback.textContent = 'Seleziona un punteggio da 1 a 10.';
+          return;
+        }
+
+        isSubmitting = true;
+        sendVoteBtn.disabled = true;
+
+        const response = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'public',
+            voterName: getOrCreateDeviceId(),
+            score: selectedScore
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Errore durante il voto.';
+          isSubmitting = false;
+          sendVoteBtn.disabled = false;
+          return;
+        }
+
+        feedback.textContent = `Voto pubblico inviato: ${selectedScore}/10`;
+        canVote = false;
+        statusChip.textContent = 'Votazione non attiva';
+        statusChip.className = 'status-chip status-closed';
+        votedBadge.style.display = 'block';
+        isSubmitting = false;
+        sendVoteBtn.disabled = false;
+      });
+    </script>
+  </body>
+</html>

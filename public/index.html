@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Votazione Live - Selezione Ruolo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/login.html'; }">Torna indietro</button>
+      <button id="logoutBtn" class="button button-danger">Logout</button>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Votazione Live</h1>
+        <p id="roleInfo">Scegli il ruolo per accedere alla pagina corretta.</p>
+      </section>
+
+      <section class="card">
+        <h2>Ruolo</h2>
+        <div class="grid grid-2">
+          <button class="button button-primary" data-role="judge" data-allow="regia,admin">Giudice</button>
+          <button class="button button-secondary" data-role="director" data-allow="gestione,admin">Regia</button>
+          <button class="button button-danger" data-role="performance" data-allow="gestione,admin">Conduzione</button>
+          <button class="button button-secondary" data-role="public" data-allow="all">Pubblico</button>
+          <button class="button button-primary" data-role="lineup" data-allow="gestione,admin">Lineup</button>
+          <button class="button button-secondary" data-role="report" data-allow="gestione,admin">Resoconto</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const roleInfo = document.getElementById('roleInfo');
+
+      async function applyRoleVisibility() {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json();
+
+        if (!data.authenticated) {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        roleInfo.textContent = `Ruolo autenticato: ${data.role}`;
+
+        document.querySelectorAll('[data-role]').forEach((btn) => {
+          const allow = String(btn.getAttribute('data-allow') || '');
+          const allowedRoles = allow.split(',').map((item) => item.trim());
+          const isAllowed = allowedRoles.includes('all') || allowedRoles.includes(data.role);
+          btn.style.display = isAllowed ? '' : 'none';
+        });
+      }
+
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login.html';
+      });
+
+      document.querySelectorAll('[data-role]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const role = btn.getAttribute('data-role');
+          socket.emit('role:selected', { role });
+
+          if (role === 'judge') {
+            window.location.href = '/judge.html';
+          } else if (role === 'director') {
+            window.location.href = '/director.html';
+          } else if (role === 'public') {
+            window.location.href = '/public.html';
+          } else if (role === 'performance') {
+            window.location.href = '/performance.html';
+          } else if (role === 'lineup') {
+            window.location.href = '/lineup.html';
+          } else {
+            window.location.href = '/report.html';
+          }
+        });
+      });
+
+      applyRoleVisibility();
+    </script>
+  </body>
+</html>

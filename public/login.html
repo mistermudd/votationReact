@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/login.html'; }">Torna indietro</button>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Accesso Votazione Live</h1>
+        <p>Seleziona ruolo e inserisci la password per accedere al pannello corretto.</p>
+      </section>
+
+      <section class="card">
+        <h2>Login</h2>
+        <label for="role">Ruolo</label>
+        <select id="role">
+          <option value="gestione">Gestione</option>
+          <option value="regia">Regia</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <label for="password" style="margin-top: 12px; display: block;">Password</label>
+        <input id="password" type="password" placeholder="Inserisci password" />
+
+        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+          <button id="loginBtn" class="button button-primary">Accedi</button>
+          <a class="button button-secondary" href="/public.html" style="text-decoration: none; display: inline-flex; align-items: center;">Vai al Pubblico</a>
+        </div>
+
+        <p id="feedback"></p>
+      </section>
+    </div>
+
+    <script>
+      const roleSelect = document.getElementById('role');
+      const passwordInput = document.getElementById('password');
+      const loginBtn = document.getElementById('loginBtn');
+      const feedback = document.getElementById('feedback');
+
+      loginBtn.addEventListener('click', async () => {
+        const role = roleSelect.value;
+        const password = passwordInput.value.trim();
+
+        if (!password) {
+          feedback.textContent = 'Inserisci la password.';
+          return;
+        }
+
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Login non riuscito.';
+          return;
+        }
+
+        window.location.href = '/index.html';
+      });
+    </script>
+  </body>
+</html>

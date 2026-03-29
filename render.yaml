@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: votationlocal
+    env: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: votation-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.1
+      - key: DB_PATH
+        value: /var/data/votation.db
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PIN
+        sync: false
+      - key: GESTIONE_USER
+        sync: false
+      - key: GESTIONE_PIN
+        sync: false
+      - key: REGIA_USER
+        sync: false
+      - key: REGIA_PIN
+        sync: false

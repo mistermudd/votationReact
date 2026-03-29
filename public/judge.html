@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Giudice - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+      <a href="/index.html">Cambia ruolo</a>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Pagina Giudice</h1>
+        <p id="artistLabel">In attesa dell'artista...</p>
+        <p id="songLabel"></p>
+        <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
+      </section>
+
+      <section class="card">
+        <h2>Il tuo voto</h2>
+        <label for="judgeName">Nome giudice</label>
+        <input id="judgeName" type="text" placeholder="Es: Giudice 1" />
+
+        <p>Seleziona un punteggio da 1 a 10:</p>
+        <div id="scoreButtons" class="score-buttons"></div>
+
+        <button id="sendVoteBtn" class="button button-primary" style="margin-top: 12px;">
+          Invia voto
+        </button>
+        <p id="feedback"></p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const artistLabel = document.getElementById('artistLabel');
+      const statusChip = document.getElementById('statusChip');
+      const songLabel = document.getElementById('songLabel');
+      const scoreButtons = document.getElementById('scoreButtons');
+      const sendVoteBtn = document.getElementById('sendVoteBtn');
+      const judgeNameInput = document.getElementById('judgeName');
+      const feedback = document.getElementById('feedback');
+      const votedBadge = document.getElementById('votedBadge');
+      const JUDGE_VOTED_KEY = 'judge-voted-per-lineup';
+
+      let selectedScore = null;
+      let canVote = false;
+      let currentLineupId = null;
+      let latestState = {
+        currentArtist: '',
+        currentSong: '',
+        currentLineupId: null,
+        isOpenForVoting: false
+      };
+
+      function getJudgeVoteMap() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(JUDGE_VOTED_KEY) || '{}');
+          return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_error) {
+          return {};
+        }
+      }
+
+      function judgeVoteKey(lineupId, judgeName) {
+        return `${lineupId || 'none'}::${String(judgeName || '').trim().toLowerCase()}`;
+      }
+
+      function markJudgeVoted(lineupId, judgeName) {
+        const map = getJudgeVoteMap();
+        map[judgeVoteKey(lineupId, judgeName)] = true;
+        localStorage.setItem(JUDGE_VOTED_KEY, JSON.stringify(map));
+      }
+
+      function hasJudgeVoted(lineupId, judgeName) {
+        const name = String(judgeName || '').trim();
+        if (!lineupId || !name) {
+          return false;
+        }
+        const map = getJudgeVoteMap();
+        return Boolean(map[judgeVoteKey(lineupId, name)]);
+      }
+
+      for (let i = 1; i <= 10; i += 1) {
+        const btn = document.createElement('button');
+        btn.className = 'score-btn';
+        btn.textContent = String(i);
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+          selectedScore = i;
+          document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+        scoreButtons.appendChild(btn);
+      }
+
+      function renderState(payload) {
+        latestState = {
+          currentArtist: payload.currentArtist || '',
+          currentSong: payload.currentSong || '',
+          currentLineupId: payload.currentLineupId || null,
+          isOpenForVoting: Boolean(payload.isOpenForVoting)
+        };
+
+        const artist = latestState.currentArtist;
+        const open = latestState.isOpenForVoting;
+        const song = latestState.currentSong;
+        currentLineupId = latestState.currentLineupId;
+        const alreadyVoted = hasJudgeVoted(currentLineupId, judgeNameInput.value);
+
+        artistLabel.textContent = artist
+          ? `Artista in esibizione: ${artist}`
+          : "In attesa dell'artista...";
+        songLabel.textContent = song ? `Brano: ${song}` : '';
+
+        canVote = open && Boolean(artist) && !alreadyVoted;
+        statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
+        statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
+        votedBadge.style.display = alreadyVoted ? 'block' : 'none';
+      }
+
+      socket.on('state:init', (payload) => renderState(payload));
+      socket.on('state:updated', (payload) => renderState(payload));
+      socket.on('artist:changed', (payload) => {
+        feedback.textContent = '';
+        selectedScore = null;
+        document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        renderState(payload);
+      });
+      socket.on('voting:closed', (payload) => renderState(payload));
+      socket.on('votes:cleared', (payload) => {
+        localStorage.removeItem(JUDGE_VOTED_KEY);
+        feedback.textContent = '';
+        renderState(payload);
+      });
+
+      judgeNameInput.addEventListener('input', () => {
+        renderState(latestState);
+      });
+
+      sendVoteBtn.addEventListener('click', async () => {
+        const judgeName = judgeNameInput.value.trim();
+
+        if (!canVote) {
+          feedback.textContent = 'Votazione non attiva.';
+          return;
+        }
+
+        if (!judgeName) {
+          feedback.textContent = 'Inserisci il nome del giudice.';
+          return;
+        }
+
+        if (!selectedScore) {
+          feedback.textContent = 'Seleziona un punteggio da 1 a 10.';
+          return;
+        }
+
+        const response = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'judge',
+            voterName: judgeName,
+            score: selectedScore
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Errore durante il voto.';
+          return;
+        }
+
+        feedback.textContent = `Voto inviato: ${selectedScore}/10`;
+        markJudgeVoted(currentLineupId, judgeName);
+        renderState(latestState);
+      });
+    </script>
+  </body>
+</html>

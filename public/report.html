@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resoconto - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+      <a href="/index.html">Cambia ruolo</a>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Resoconto Dati DB</h1>
+        <p id="generatedAt"></p>
+      </section>
+
+      <section class="card">
+        <h2>Sintesi per artista</h2>
+        <div id="summary"></div>
+      </section>
+
+      <section class="card">
+        <h2>Dettaglio voti memorizzati</h2>
+        <div id="votes"></div>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const generatedAtEl = document.getElementById('generatedAt');
+      const summaryEl = document.getElementById('summary');
+      const votesEl = document.getElementById('votes');
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      }
+
+      function renderReport(data) {
+        generatedAtEl.textContent = `Aggiornato: ${new Date(data.generatedAt).toLocaleString('it-IT')}`;
+
+        if (!data.summary || !data.summary.length) {
+          summaryEl.innerHTML = '<p>Nessun dato disponibile.</p>';
+        } else {
+          summaryEl.innerHTML = data.summary
+            .map(
+              (row) =>
+                `<p><strong>${row.performanceOrder}. ${escapeHtml(row.artistName)}</strong>${
+                  row.songTitle ? ` - ${escapeHtml(row.songTitle)}` : ''
+                }<br/>Totale: ${row.totalVotes} voti (media ${row.totalAverage}) | Giudici: ${row.judgeVotes} (media ${row.judgeAverage}) | Pubblico: ${row.publicVotes} (media ${row.publicAverage})</p>`
+            )
+            .join('');
+        }
+
+        if (!data.votes || !data.votes.length) {
+          votesEl.innerHTML = '<p>Nessun voto memorizzato.</p>';
+        } else {
+          votesEl.innerHTML = data.votes
+            .map(
+              (vote) =>
+                `<p>${vote.performance_order}. ${escapeHtml(vote.artist_name)} | <strong>${escapeHtml(vote.role)}</strong> | ${escapeHtml(vote.voter_name)} => ${vote.score}/10</p>`
+            )
+            .join('');
+        }
+      }
+
+      async function loadReport() {
+        const response = await fetch('/api/report');
+        const data = await response.json();
+        renderReport(data);
+      }
+
+      socket.on('lineup:updated', loadReport);
+      socket.on('artist:changed', loadReport);
+      socket.on('vote:updated', loadReport);
+      socket.on('voting:closed', loadReport);
+
+      loadReport();
+    </script>
+  </body>
+</html>

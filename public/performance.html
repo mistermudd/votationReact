@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conduzione - Votazione Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+      <a href="/index.html">Cambia ruolo</a>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Conduzione Esibizioni</h1>
+        <p>Avvia, metti in pausa, termina e passa al prossimo artista automaticamente.</p>
+      </section>
+
+      <section class="card">
+        <h2>Controlli live</h2>
+        <label for="lineupSelect">Seleziona artista dalla lineup</label>
+        <select id="lineupSelect"></select>
+
+        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+          <button id="startBtn" class="button button-primary">Inizia esibizione</button>
+          <button id="pauseBtn" class="button button-secondary">Pausa votazione</button>
+          <button id="resumeBtn" class="button button-secondary">Riprendi votazione</button>
+          <button id="terminateBtn" class="button button-danger">Termina esibizione</button>
+          <button id="nextBtn" class="button button-primary">Prossimo in ordine</button>
+          <button id="clearVotesBtn" class="button button-danger">Pulisci dati votazioni</button>
+        </div>
+        <p id="feedback"></p>
+      </section>
+
+      <section class="card">
+        <h2>Stato corrente</h2>
+        <p id="currentArtist">Nessuna esibizione attiva.</p>
+        <p id="votingState">Votazione chiusa.</p>
+        <p id="nextArtist">Nessun prossimo artista disponibile.</p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const lineupSelect = document.getElementById('lineupSelect');
+      const feedback = document.getElementById('feedback');
+      const currentArtist = document.getElementById('currentArtist');
+      const votingState = document.getElementById('votingState');
+      const nextArtist = document.getElementById('nextArtist');
+
+      function renderLineup(payload) {
+        const lineup = payload.lineup || [];
+        lineupSelect.innerHTML = '';
+
+        lineup.forEach((row) => {
+          const option = document.createElement('option');
+          option.value = String(row.id);
+          option.textContent = `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
+          lineupSelect.appendChild(option);
+        });
+      }
+
+      function renderState(payload) {
+        if (!payload.hasActivePerformance) {
+          currentArtist.textContent = 'Nessuna esibizione attiva.';
+          votingState.textContent = 'Votazione chiusa.';
+        } else {
+          currentArtist.textContent = `In corso: ${payload.currentOrder}. ${payload.currentArtist}${payload.currentSong ? ` - ${payload.currentSong}` : ''}`;
+          votingState.textContent = payload.isOpenForVoting ? 'Votazione aperta.' : 'Votazione in pausa.';
+        }
+
+        if (payload.nextLineup) {
+          nextArtist.textContent = `Prossimo: ${payload.nextLineup.performanceOrder}. ${payload.nextLineup.artistName}${payload.nextLineup.songTitle ? ` - ${payload.nextLineup.songTitle}` : ''}`;
+        } else {
+          nextArtist.textContent = 'Nessun prossimo artista disponibile.';
+        }
+      }
+
+      async function sendAction(url, body = {}) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Operazione non riuscita.';
+          return;
+        }
+
+        feedback.textContent = data.message || 'Operazione completata.';
+      }
+
+      document.getElementById('startBtn').addEventListener('click', () => {
+        const lineupId = Number(lineupSelect.value);
+        if (!lineupId) {
+          feedback.textContent = 'Seleziona un artista dalla lineup.';
+          return;
+        }
+        sendAction('/api/performance/start', { lineupId });
+      });
+
+      document.getElementById('pauseBtn').addEventListener('click', () => sendAction('/api/performance/pause'));
+      document.getElementById('resumeBtn').addEventListener('click', () => sendAction('/api/performance/resume'));
+      document.getElementById('terminateBtn').addEventListener('click', () => sendAction('/api/performance/terminate'));
+      document.getElementById('nextBtn').addEventListener('click', () => sendAction('/api/performance/next'));
+      document.getElementById('clearVotesBtn').addEventListener('click', async () => {
+        const confirmed = window.confirm('Confermi la pulizia di tutti i dati votazioni?');
+        if (!confirmed) {
+          return;
+        }
+
+        await sendAction('/api/admin/clear-votes');
+      });
+
+      socket.on('state:init', (payload) => renderState(payload));
+      socket.on('state:updated', (payload) => renderState(payload));
+      socket.on('lineup:updated', (payload) => renderLineup(payload));
+    </script>
+  </body>
+</html>
