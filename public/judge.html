@@ -112,6 +112,12 @@
         return Boolean(map[judgeVoteKey(lineupId, name)]);
       }
 
+      function animateSuccess(node) {
+        node.classList.remove('flash-success');
+        void node.offsetWidth;
+        node.classList.add('flash-success');
+      }
+
       for (let i = 1; i <= 10; i += 1) {
         const btn = document.createElement('button');
         btn.className = 'score-btn';
@@ -284,6 +290,7 @@
         }
 
         feedback.textContent = `Voto inviato: ${selectedScore}/10`;
+        animateSuccess(feedback);
         markJudgeVoted(currentLineupId, judgeName);
         renderState(latestState);
       });
@@ -316,6 +323,9 @@
         runoffFeedback.textContent = response.ok
           ? data.message || 'Voto ballottaggio registrato.'
           : data.error || 'Errore voto ballottaggio.';
+        if (response.ok) {
+          animateSuccess(runoffFeedback);
+        }
         await loadRunoffState();
       });
 

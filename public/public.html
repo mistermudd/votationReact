@@ -81,6 +81,12 @@
         return deviceId;
       }
 
+      function animateSuccess(node) {
+        node.classList.remove('flash-success');
+        void node.offsetWidth;
+        node.classList.add('flash-success');
+      }
+
       async function refreshVoteAvailability() {
         const baseCanVote = isOpenForVoting && Boolean(currentArtist);
         let alreadyVoted = false;
@@ -257,6 +263,7 @@
         }
 
         feedback.textContent = `Voto pubblico inviato: ${selectedScore}/10`;
+        animateSuccess(feedback);
         canVote = false;
         statusChip.textContent = 'Votazione non attiva';
         statusChip.className = 'status-chip status-closed';
@@ -295,6 +302,9 @@
         runoffFeedback.textContent = response.ok
           ? data.message || 'Voto ballottaggio registrato.'
           : data.error || 'Errore voto ballottaggio.';
+        if (response.ok) {
+          animateSuccess(runoffFeedback);
+        }
         await loadRunoffState();
       });
 

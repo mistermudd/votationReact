@@ -220,6 +220,10 @@ select {
   animation: bobIcon 2.6s ease-in-out infinite;
 }
 
+.flash-success {
+  animation: successPulse 0.9s ease;
+}
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -279,6 +283,23 @@ select {
 
   50% {
     transform: translate(-24px, -14px);
+  }
+}
+
+@keyframes successPulse {
+  0% {
+    transform: scale(1);
+    color: inherit;
+  }
+
+  45% {
+    transform: scale(1.03);
+    color: #0f6e59;
+  }
+
+  100% {
+    transform: scale(1);
+    color: inherit;
   }
 }
 
