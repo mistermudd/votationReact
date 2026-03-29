@@ -14,7 +14,7 @@
 
     <div class="container fade-in">
       <section class="hero">
-        <h1>Pagina Giudice</h1>
+        <h1><span class="page-icon">&#127942;</span> Pagina Giudice</h1>
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
@@ -28,6 +28,7 @@
 
         <p>Seleziona un punteggio da 1 a 10:</p>
         <div id="scoreButtons" class="score-buttons"></div>
+        <p id="waitNextMessage" style="display: none;"><strong>Hai gia votato. Attendi la prossima votazione.</strong></p>
 
         <button id="sendVoteBtn" class="button button-primary" style="margin-top: 12px;">
           Invia voto
@@ -55,6 +56,7 @@
       const judgeNameInput = document.getElementById('judgeName');
       const feedback = document.getElementById('feedback');
       const votedBadge = document.getElementById('votedBadge');
+      const waitNextMessage = document.getElementById('waitNextMessage');
       const runoffSection = document.getElementById('runoffSection');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffVotedBadge = document.getElementById('runoffVotedBadge');
@@ -146,6 +148,9 @@
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         votedBadge.style.display = alreadyVoted ? 'block' : 'none';
+        scoreButtons.style.display = alreadyVoted ? 'none' : 'grid';
+        sendVoteBtn.style.display = alreadyVoted ? 'none' : 'inline-block';
+        waitNextMessage.style.display = alreadyVoted ? 'block' : 'none';
       }
 
       async function refreshRunoffSection() {
