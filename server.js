@@ -137,11 +137,11 @@ app.use((req, res, next) => {
   const role = getAccessRole(req);
   req.accessRole = role;
 
-  const publicPages = new Set(['/', '/login.html', '/public.html']);
+  const publicPages = new Set(['/', '/login.html', '/public.html', '/runoff-public.html']);
   const anyRolePages = new Set(['/index.html']);
-  const gestionePages = new Set(['/director.html', '/report.html']);
-  const regiaPages = new Set(['/judge.html']);
-  const adminPages = new Set(['/performance.html', '/lineup.html']);
+  const gestionePages = new Set(['/director.html', '/report.html', '/lineup.html', '/runoff-manage.html']);
+  const regiaPages = new Set(['/judge.html', '/runoff-judge.html']);
+  const adminPages = new Set(['/performance.html']);
 
   if (publicPages.has(req.path)) {
     next();
@@ -283,6 +283,147 @@ function getLineup() {
     `
     )
     .all();
+}
+
+function getActiveRunoffSession() {
+  return db
+    .prepare(
+      `
+      SELECT
+        rs.id,
+        rs.first_lineup_id,
+        rs.second_lineup_id,
+        rs.is_open,
+        rs.created_at,
+        rs.closed_at,
+        a.artist_name AS first_artist_name,
+        a.song_title AS first_song_title,
+        b.artist_name AS second_artist_name,
+        b.song_title AS second_song_title
+      FROM runoff_sessions rs
+      JOIN lineup a ON a.id = rs.first_lineup_id
+      JOIN lineup b ON b.id = rs.second_lineup_id
+      WHERE rs.closed_at IS NULL
+      ORDER BY rs.id DESC
+      LIMIT 1
+    `
+    )
+    .get();
+}
+
+function getRunoffVoteCounts(sessionId) {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        selected_lineup_id,
+        role,
+        COUNT(*) AS total
+      FROM runoff_votes
+      WHERE runoff_session_id = ?
+      GROUP BY selected_lineup_id, role
+    `
+    )
+    .all(sessionId);
+
+  const counts = {};
+  rows.forEach((row) => {
+    if (!counts[row.selected_lineup_id]) {
+      counts[row.selected_lineup_id] = {
+        judge: 0,
+        public: 0,
+        total: 0
+      };
+    }
+    const role = row.role === 'judge' ? 'judge' : 'public';
+    const value = Number(row.total || 0);
+    counts[row.selected_lineup_id][role] = value;
+    counts[row.selected_lineup_id].total += value;
+  });
+
+  return counts;
+}
+
+function buildRunoffState() {
+  const session = getActiveRunoffSession();
+
+  if (!session) {
+    return {
+      hasActiveRunoff: false,
+      sessionId: null,
+      isOpenForVoting: false,
+      artists: [],
+      totals: {},
+      winnerLineupId: null
+    };
+  }
+
+  const counts = getRunoffVoteCounts(session.id);
+  const artists = [
+    {
+      lineupId: session.first_lineup_id,
+      artistName: session.first_artist_name,
+      performanceName: session.first_song_title || '',
+      votes: counts[session.first_lineup_id] || { judge: 0, public: 0, total: 0 }
+    },
+    {
+      lineupId: session.second_lineup_id,
+      artistName: session.second_artist_name,
+      performanceName: session.second_song_title || '',
+      votes: counts[session.second_lineup_id] || { judge: 0, public: 0, total: 0 }
+    }
+  ];
+
+  const winnerLineupId =
+    artists[0].votes.total === artists[1].votes.total
+      ? null
+      : artists[0].votes.total > artists[1].votes.total
+        ? artists[0].lineupId
+        : artists[1].lineupId;
+
+  return {
+    hasActiveRunoff: true,
+    sessionId: session.id,
+    isOpenForVoting: Boolean(session.is_open),
+    createdAt: session.created_at,
+    artists,
+    winnerLineupId
+  };
+}
+
+function emitRunoffState(eventName) {
+  const payload = buildRunoffState();
+  io.emit('runoff:state', payload);
+  if (eventName) {
+    io.emit(eventName, payload);
+  }
+  return payload;
+}
+
+function closeActiveRunoffSession() {
+  db.prepare(
+    `
+    UPDATE runoff_sessions
+    SET is_open = 0,
+        closed_at = datetime('now')
+    WHERE closed_at IS NULL
+  `
+  ).run();
+}
+
+function runoffVoteExists({ sessionId, role, voterName }) {
+  const existing = db
+    .prepare(
+      `
+      SELECT id
+      FROM runoff_votes
+      WHERE runoff_session_id = ? AND role = ? AND lower(voter_name) = lower(?)
+      LIMIT 1
+    `
+    )
+    .get(sessionId, role, voterName);
+
+  return Boolean(existing);
 }
 
 function getNextLineupRow(currentOrder) {
@@ -606,11 +747,11 @@ app.get('/api/state', (_req, res) => {
   res.json(buildStatePayload());
 });
 
-app.get('/api/lineup', requireRoles(['admin']), (_req, res) => {
+app.get('/api/lineup', requireRoles(['gestione', 'admin']), (_req, res) => {
   res.json({ lineup: getLineup() });
 });
 
-app.post('/api/lineup', requireRoles(['admin']), (req, res) => {
+app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
   const performanceOrder = Number(req.body.performanceOrder);
@@ -648,7 +789,7 @@ app.post('/api/lineup', requireRoles(['admin']), (req, res) => {
   }
 });
 
-app.put('/api/lineup/:id', requireRoles(['admin']), (req, res) => {
+app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
   const lineupId = Number(req.params.id);
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
@@ -696,7 +837,7 @@ app.put('/api/lineup/:id', requireRoles(['admin']), (req, res) => {
   }
 });
 
-app.delete('/api/lineup/:id', requireRoles(['admin']), (req, res) => {
+app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
   const lineupId = Number(req.params.id);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
@@ -909,6 +1050,143 @@ app.get('/api/public/vote-status', (req, res) => {
   });
 });
 
+app.get('/api/runoff/state', (_req, res) => {
+  res.status(200).json(buildRunoffState());
+});
+
+app.get('/api/runoff/vote-status', (req, res) => {
+  const session = getActiveRunoffSession();
+  const role = String(req.query.role || '').trim();
+  const voterName = String(req.query.voterName || '').trim();
+  const accessRole = getAccessRole(req);
+
+  if (!session) {
+    return res.status(200).json({ hasActiveRunoff: false, hasVoted: false, isOpenForVoting: false });
+  }
+
+  if (role !== 'judge' && role !== 'public') {
+    return res.status(400).json({ error: 'role non valido' });
+  }
+
+  if (role === 'judge' && accessRole !== 'regia' && accessRole !== 'admin') {
+    return res.status(401).json({ error: 'Accesso riservato a regia o admin per stato voto giudice' });
+  }
+
+  const hasVoted = voterName
+    ? runoffVoteExists({ sessionId: session.id, role, voterName })
+    : false;
+
+  return res.status(200).json({
+    hasActiveRunoff: true,
+    hasVoted,
+    isOpenForVoting: Boolean(session.is_open),
+    sessionId: session.id
+  });
+});
+
+app.post('/api/runoff/start', requireRoles(['gestione', 'admin']), (req, res) => {
+  const firstLineupId = Number(req.body.firstLineupId);
+  const secondLineupId = Number(req.body.secondLineupId);
+
+  if (!Number.isInteger(firstLineupId) || !Number.isInteger(secondLineupId)) {
+    return res.status(400).json({ error: 'Seleziona due artisti validi' });
+  }
+
+  if (firstLineupId === secondLineupId) {
+    return res.status(400).json({ error: 'Gli artisti devono essere diversi' });
+  }
+
+  const lineupRows = db
+    .prepare(
+      `
+      SELECT id
+      FROM lineup
+      WHERE id IN (?, ?)
+    `
+    )
+    .all(firstLineupId, secondLineupId);
+
+  if (lineupRows.length !== 2) {
+    return res.status(404).json({ error: 'Artista non trovato in lineup' });
+  }
+
+  closeActiveRunoffSession();
+  db.prepare(
+    `
+    INSERT INTO runoff_sessions (first_lineup_id, second_lineup_id, is_open)
+    VALUES (?, ?, 1)
+  `
+  ).run(firstLineupId, secondLineupId);
+
+  const state = emitRunoffState('runoff:started');
+  return res.status(200).json({ message: 'Ballottaggio avviato', state });
+});
+
+app.post('/api/runoff/close', requireRoles(['gestione', 'admin']), (_req, res) => {
+  const session = getActiveRunoffSession();
+  if (!session) {
+    return res.status(400).json({ error: 'Nessun ballottaggio attivo' });
+  }
+
+  db.prepare(
+    `
+    UPDATE runoff_sessions
+    SET is_open = 0,
+        closed_at = datetime('now')
+    WHERE id = ?
+  `
+  ).run(session.id);
+
+  const state = emitRunoffState('runoff:closed');
+  return res.status(200).json({ message: 'Ballottaggio chiuso', state });
+});
+
+app.post('/api/runoff/vote', (req, res) => {
+  const session = getActiveRunoffSession();
+  const role = String(req.body.role || '').trim();
+  const voterName = String(req.body.voterName || '').trim();
+  const selectedLineupId = Number(req.body.selectedLineupId);
+  const accessRole = getAccessRole(req);
+
+  if (!session || !session.is_open) {
+    return res.status(400).json({ error: 'Ballottaggio non attivo o chiuso' });
+  }
+
+  if (role !== 'judge' && role !== 'public') {
+    return res.status(400).json({ error: 'role non valido' });
+  }
+
+  if (role === 'judge' && accessRole !== 'regia' && accessRole !== 'admin') {
+    return res.status(401).json({ error: 'Accesso riservato a regia o admin per voto giudice' });
+  }
+
+  if (!voterName) {
+    return res.status(400).json({ error: 'voterName obbligatorio' });
+  }
+
+  if (!Number.isInteger(selectedLineupId)) {
+    return res.status(400).json({ error: 'selectedLineupId non valido' });
+  }
+
+  if (selectedLineupId !== session.first_lineup_id && selectedLineupId !== session.second_lineup_id) {
+    return res.status(400).json({ error: 'Artista non valido per questo ballottaggio' });
+  }
+
+  if (runoffVoteExists({ sessionId: session.id, role, voterName })) {
+    return res.status(409).json({ error: 'Hai gia votato in questo ballottaggio' });
+  }
+
+  db.prepare(
+    `
+    INSERT INTO runoff_votes (runoff_session_id, role, voter_name, selected_lineup_id)
+    VALUES (?, ?, ?, ?)
+  `
+  ).run(session.id, role, voterName, selectedLineupId);
+
+  const state = emitRunoffState('runoff:vote-updated');
+  return res.status(200).json({ message: 'Voto ballottaggio registrato', state });
+});
+
 app.post('/api/vote', (req, res) => {
   const role = String(req.body.role || '').trim();
   let voterName = String(req.body.voterName || req.body.judgeName || '').trim();
@@ -1012,6 +1290,7 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
 
 io.on('connection', (socket) => {
   socket.emit('state:init', buildStatePayload());
+  socket.emit('runoff:state', buildRunoffState());
   socket.emit('lineup:updated', { lineup: getLineup() });
   socket.on('role:selected', () => {});
 });

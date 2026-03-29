@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ballottaggio Pubblico</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Ballottaggio Pubblico</h1>
+        <p id="statusText">In attesa di un ballottaggio attivo.</p>
+        <p id="votedBadge" style="display: none;"><strong>Hai gia votato in questo ballottaggio</strong></p>
+      </section>
+
+      <section class="card">
+        <h2>Vota un solo artista</h2>
+        <div id="choices" class="grid"></div>
+        <p id="feedback"></p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const statusText = document.getElementById('statusText');
+      const choices = document.getElementById('choices');
+      const feedback = document.getElementById('feedback');
+      const votedBadge = document.getElementById('votedBadge');
+      const PUBLIC_DEVICE_KEY = 'public-voter-device-id';
+
+      let currentState = null;
+
+      function getOrCreateDeviceId() {
+        let deviceId = localStorage.getItem(PUBLIC_DEVICE_KEY);
+        if (!deviceId) {
+          deviceId = `pub-${Math.random().toString(36).slice(2, 14)}`;
+          localStorage.setItem(PUBLIC_DEVICE_KEY, deviceId);
+        }
+        return deviceId;
+      }
+
+      function renderChoices(state, hasVoted) {
+        if (!state || !state.hasActiveRunoff) {
+          statusText.textContent = 'In attesa di un ballottaggio attivo.';
+          choices.innerHTML = '';
+          votedBadge.style.display = 'none';
+          return;
+        }
+
+        const open = Boolean(state.isOpenForVoting);
+        statusText.textContent = open ? 'Ballottaggio aperto.' : 'Ballottaggio chiuso.';
+        votedBadge.style.display = hasVoted ? 'block' : 'none';
+
+        choices.innerHTML = (state.artists || [])
+          .map((artist) => {
+            const disabled = !open || hasVoted;
+            return `<button class="button button-primary" data-lineup-id="${artist.lineupId}" ${disabled ? 'disabled' : ''}>` +
+              `${artist.artistName}${artist.performanceName ? ` - ${artist.performanceName}` : ''}</button>`;
+          })
+          .join('');
+      }
+
+      async function loadState() {
+        const response = await fetch('/api/runoff/state');
+        const data = await response.json();
+        currentState = data;
+        await refreshVoteStatus();
+      }
+
+      async function refreshVoteStatus() {
+        const deviceId = getOrCreateDeviceId();
+        let hasVoted = false;
+
+        if (currentState && currentState.hasActiveRunoff) {
+          const params = new URLSearchParams({ role: 'public', voterName: deviceId });
+          const response = await fetch(`/api/runoff/vote-status?${params.toString()}`);
+          const data = await response.json();
+          hasVoted = Boolean(data.hasVoted);
+        }
+
+        renderChoices(currentState, hasVoted);
+      }
+
+      choices.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+          return;
+        }
+
+        const selectedLineupId = Number(target.getAttribute('data-lineup-id'));
+        if (!selectedLineupId) {
+          return;
+        }
+
+        const confirmed = window.confirm(`Confermi il voto per ${target.textContent}?`);
+        if (!confirmed) {
+          return;
+        }
+
+        const response = await fetch('/api/runoff/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'public',
+            voterName: getOrCreateDeviceId(),
+            selectedLineupId
+          })
+        });
+
+        const data = await response.json();
+        feedback.textContent = response.ok ? (data.message || 'Voto registrato.') : (data.error || 'Errore voto.');
+        await loadState();
+      });
+
+      socket.on('runoff:state', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:started', (payload) => {
+        feedback.textContent = '';
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:closed', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:vote-updated', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+
+      loadState();
+    </script>
+  </body>
+</html>

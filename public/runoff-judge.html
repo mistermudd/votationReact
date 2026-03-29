@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ballottaggio Giuria</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/judge.html'; }">Torna indietro</button>
+      <button id="logoutBtn" class="button button-danger" type="button">Logout</button>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Ballottaggio Giuria</h1>
+        <p id="statusText">In attesa di un ballottaggio attivo.</p>
+        <p id="votedBadge" style="display: none;"><strong>Hai gia votato in questo ballottaggio</strong></p>
+      </section>
+
+      <section class="card">
+        <h2>Vota un solo artista</h2>
+        <label for="judgeName">Nome giudice</label>
+        <input id="judgeName" type="text" placeholder="Es: Giudice 1" />
+
+        <div id="choices" class="grid" style="margin-top: 12px;"></div>
+        <p id="feedback"></p>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const judgeNameInput = document.getElementById('judgeName');
+      const statusText = document.getElementById('statusText');
+      const choices = document.getElementById('choices');
+      const feedback = document.getElementById('feedback');
+      const votedBadge = document.getElementById('votedBadge');
+
+      let currentState = null;
+
+      function renderChoices(state, hasVoted) {
+        if (!state || !state.hasActiveRunoff) {
+          statusText.textContent = 'In attesa di un ballottaggio attivo.';
+          choices.innerHTML = '';
+          votedBadge.style.display = 'none';
+          return;
+        }
+
+        const open = Boolean(state.isOpenForVoting);
+        statusText.textContent = open ? 'Ballottaggio aperto.' : 'Ballottaggio chiuso.';
+        votedBadge.style.display = hasVoted ? 'block' : 'none';
+
+        choices.innerHTML = (state.artists || [])
+          .map((artist) => {
+            const disabled = !open || hasVoted;
+            return `<button class="button button-primary" data-lineup-id="${artist.lineupId}" ${disabled ? 'disabled' : ''}>` +
+              `${artist.artistName}${artist.performanceName ? ` - ${artist.performanceName}` : ''}</button>`;
+          })
+          .join('');
+      }
+
+      async function loadState() {
+        const response = await fetch('/api/runoff/state');
+        const data = await response.json();
+        currentState = data;
+        await refreshVoteStatus();
+      }
+
+      async function refreshVoteStatus() {
+        const judgeName = judgeNameInput.value.trim();
+        let hasVoted = false;
+
+        if (currentState && currentState.hasActiveRunoff && judgeName) {
+          const params = new URLSearchParams({ role: 'judge', voterName: judgeName });
+          const response = await fetch(`/api/runoff/vote-status?${params.toString()}`);
+          const data = await response.json();
+          hasVoted = Boolean(data.hasVoted);
+        }
+
+        renderChoices(currentState, hasVoted);
+      }
+
+      judgeNameInput.addEventListener('input', refreshVoteStatus);
+
+      choices.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+          return;
+        }
+
+        const judgeName = judgeNameInput.value.trim();
+        if (!judgeName) {
+          feedback.textContent = 'Inserisci il nome del giudice.';
+          return;
+        }
+
+        const selectedLineupId = Number(target.getAttribute('data-lineup-id'));
+        if (!selectedLineupId) {
+          return;
+        }
+
+        const confirmed = window.confirm(`Confermi il voto per ${target.textContent}?`);
+        if (!confirmed) {
+          return;
+        }
+
+        const response = await fetch('/api/runoff/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'judge',
+            voterName: judgeName,
+            selectedLineupId
+          })
+        });
+
+        const data = await response.json();
+        feedback.textContent = response.ok ? (data.message || 'Voto registrato.') : (data.error || 'Errore voto.');
+        await loadState();
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login.html';
+      });
+
+      socket.on('runoff:state', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:started', (payload) => {
+        feedback.textContent = '';
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:closed', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+      socket.on('runoff:vote-updated', (payload) => {
+        currentState = payload;
+        refreshVoteStatus();
+      });
+
+      loadState();
+    </script>
+  </body>
+</html>

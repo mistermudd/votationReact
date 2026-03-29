@@ -41,6 +41,29 @@ db.exec(`
     UNIQUE(lineup_id, role, voter_name),
     FOREIGN KEY (lineup_id) REFERENCES lineup(id)
   );
+
+  CREATE TABLE IF NOT EXISTS runoff_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_lineup_id INTEGER NOT NULL,
+    second_lineup_id INTEGER NOT NULL,
+    is_open INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    closed_at TEXT,
+    FOREIGN KEY (first_lineup_id) REFERENCES lineup(id),
+    FOREIGN KEY (second_lineup_id) REFERENCES lineup(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS runoff_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    runoff_session_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('judge', 'public')),
+    voter_name TEXT NOT NULL,
+    selected_lineup_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(runoff_session_id, role, voter_name),
+    FOREIGN KEY (runoff_session_id) REFERENCES runoff_sessions(id),
+    FOREIGN KEY (selected_lineup_id) REFERENCES lineup(id)
+  );
 `);
 
 module.exports = db;

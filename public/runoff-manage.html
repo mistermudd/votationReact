@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ballottaggio - Gestione</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1>Gestione Ballottaggio</h1>
+        <p>Seleziona due artisti e avvia una sfida se c'e un pareggio.</p>
+      </section>
+
+      <section class="card">
+        <h2>Avvio sfida</h2>
+        <div class="grid grid-2">
+          <div>
+            <label for="firstLineupId">Primo artista</label>
+            <select id="firstLineupId"></select>
+          </div>
+          <div>
+            <label for="secondLineupId">Secondo artista</label>
+            <select id="secondLineupId"></select>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+          <button id="startBtn" class="button button-primary">Avvia ballottaggio</button>
+          <button id="closeBtn" class="button button-danger">Chiudi ballottaggio</button>
+        </div>
+        <p id="feedback"></p>
+      </section>
+
+      <section class="card">
+        <h2>Pagine nascoste di voto</h2>
+        <p>Giuria: <code>/runoff-judge.html</code></p>
+        <p>Pubblico: <code>/runoff-public.html</code></p>
+      </section>
+
+      <section class="card">
+        <h2>Stato sfida</h2>
+        <p id="runoffStatus">Nessun ballottaggio attivo.</p>
+        <div id="runoffResults"></div>
+      </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const firstSelect = document.getElementById('firstLineupId');
+      const secondSelect = document.getElementById('secondLineupId');
+      const feedback = document.getElementById('feedback');
+      const runoffStatus = document.getElementById('runoffStatus');
+      const runoffResults = document.getElementById('runoffResults');
+
+      function optionLabel(row) {
+        return `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
+      }
+
+      function renderLineup(payload) {
+        const lineup = payload.lineup || [];
+        firstSelect.innerHTML = '';
+        secondSelect.innerHTML = '';
+
+        lineup.forEach((row) => {
+          const first = document.createElement('option');
+          first.value = String(row.id);
+          first.textContent = optionLabel(row);
+          firstSelect.appendChild(first);
+
+          const second = document.createElement('option');
+          second.value = String(row.id);
+          second.textContent = optionLabel(row);
+          secondSelect.appendChild(second);
+        });
+
+        if (lineup.length > 1) {
+          secondSelect.selectedIndex = 1;
+        }
+      }
+
+      function renderRunoffState(state) {
+        if (!state || !state.hasActiveRunoff) {
+          runoffStatus.textContent = 'Nessun ballottaggio attivo.';
+          runoffResults.innerHTML = '';
+          return;
+        }
+
+        runoffStatus.textContent = state.isOpenForVoting
+          ? 'Ballottaggio attivo e aperto al voto.'
+          : 'Ballottaggio chiuso.';
+
+        runoffResults.innerHTML = (state.artists || [])
+          .map((artist) =>
+            `<p><strong>${artist.artistName}</strong>${artist.performanceName ? ` - ${artist.performanceName}` : ''}<br/>` +
+            `Giuria: ${artist.votes.judge} | Pubblico: ${artist.votes.public} | Totale: ${artist.votes.total}</p>`
+          )
+          .join('');
+      }
+
+      async function loadLineup() {
+        const response = await fetch('/api/lineup');
+        const data = await response.json();
+        if (!response.ok) {
+          feedback.textContent = data.error || 'Errore caricamento lineup.';
+          return;
+        }
+        renderLineup(data);
+      }
+
+      async function loadRunoffState() {
+        const response = await fetch('/api/runoff/state');
+        const data = await response.json();
+        renderRunoffState(data);
+      }
+
+      document.getElementById('startBtn').addEventListener('click', async () => {
+        const firstLineupId = Number(firstSelect.value);
+        const secondLineupId = Number(secondSelect.value);
+
+        const response = await fetch('/api/runoff/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firstLineupId, secondLineupId })
+        });
+
+        const data = await response.json();
+        feedback.textContent = response.ok ? (data.message || 'Ballottaggio avviato.') : (data.error || 'Errore avvio ballottaggio.');
+      });
+
+      document.getElementById('closeBtn').addEventListener('click', async () => {
+        const response = await fetch('/api/runoff/close', { method: 'POST' });
+        const data = await response.json();
+        feedback.textContent = response.ok ? (data.message || 'Ballottaggio chiuso.') : (data.error || 'Errore chiusura ballottaggio.');
+      });
+
+      socket.on('lineup:updated', (payload) => renderLineup(payload));
+      socket.on('runoff:state', (payload) => renderRunoffState(payload));
+      socket.on('runoff:started', (payload) => renderRunoffState(payload));
+      socket.on('runoff:closed', (payload) => renderRunoffState(payload));
+      socket.on('runoff:vote-updated', (payload) => renderRunoffState(payload));
+
+      loadLineup();
+      loadRunoffState();
+    </script>
+  </body>
+</html>
