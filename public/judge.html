@@ -9,7 +9,7 @@
   <body>
     <div class="top-right">
       <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
-      <a href="/index.html">Cambia ruolo</a>
+      <button id="logoutBtn" class="button button-danger" type="button">Logout</button>
     </div>
 
     <div class="container fade-in">
@@ -117,7 +117,7 @@
         artistLabel.textContent = artist
           ? `Artista in esibizione: ${artist}`
           : "In attesa dell'artista...";
-        songLabel.textContent = song ? `Brano: ${song}` : '';
+        songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
 
         canVote = open && Boolean(artist) && !alreadyVoted;
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
@@ -144,6 +144,11 @@
         renderState(latestState);
       });
 
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login.html';
+      });
+
       sendVoteBtn.addEventListener('click', async () => {
         const judgeName = judgeNameInput.value.trim();
 
@@ -159,6 +164,11 @@
 
         if (!selectedScore) {
           feedback.textContent = 'Seleziona un punteggio da 1 a 10.';
+          return;
+        }
+
+        const confirmed = window.confirm(`Confermi il voto ${selectedScore}/10?`);
+        if (!confirmed) {
           return;
         }
 

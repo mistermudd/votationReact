@@ -9,7 +9,6 @@
   <body>
     <div class="top-right">
       <button class="button button-secondary" type="button" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/index.html'; }">Torna indietro</button>
-      <a href="/index.html">Cambia ruolo</a>
     </div>
 
     <div class="container fade-in">
@@ -109,7 +108,7 @@
               <tbody>
                 ${rows
                   .map((row) => {
-                    const artistLabel = `${row.performanceOrder}. ${escapeHtml(row.artistName)}${
+                    const artistLabel = `${escapeHtml(row.artistName)}${
                       row.songTitle ? ` - ${escapeHtml(row.songTitle)}` : ''
                     }`;
                     const detail =

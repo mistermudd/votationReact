@@ -104,7 +104,7 @@
         currentLineupId = payload.currentLineupId || null;
 
         artistLabel.textContent = artist ? `Artista in esibizione: ${artist}` : "In attesa dell'artista...";
-        songLabel.textContent = song ? `Brano: ${song}` : '';
+        songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
 
         refreshVoteAvailability();
       }
@@ -135,6 +135,11 @@
 
         if (!selectedScore) {
           feedback.textContent = 'Seleziona un punteggio da 1 a 10.';
+          return;
+        }
+
+        const confirmed = window.confirm(`Confermi il voto pubblico ${selectedScore}/10?`);
+        if (!confirmed) {
           return;
         }
 
