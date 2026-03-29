@@ -50,6 +50,9 @@
       const judgeStats = document.getElementById('judgeStats');
       const publicStats = document.getElementById('publicStats');
 
+      let lastKnownLineupId = null;
+      let lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
+
       function renderLineup(payload) {
         const lineup = payload.lineup || [];
         lineupSelect.innerHTML = '';
@@ -66,10 +69,17 @@
         const artist = payload.currentArtist || '';
         const open = Boolean(payload.isOpenForVoting);
         const paused = Boolean(payload.isPaused);
-        const stats = payload.stats || {
-          total: { count: 0, average: 0 },
-          byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } }
-        };
+        const lineupId = payload.currentLineupId || null;
+        const incomingStats = payload.stats || { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
+
+        // Keep last known stats: update whenever we have a live lineup, reset only when lineup changes
+        if (lineupId && lineupId !== lastKnownLineupId) {
+          lastKnownLineupId = lineupId;
+          lastKnownStats = incomingStats;
+        } else if (lineupId) {
+          lastKnownStats = incomingStats;
+        }
+        const stats = lastKnownStats;
 
         liveArtist.textContent = artist
           ? `Artista corrente: ${artist}`

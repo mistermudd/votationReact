@@ -3,6 +3,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const db = require('./db');
 
 const app = express();
@@ -1288,6 +1289,28 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
   });
 });
 
+// Admin: download a copy of the SQLite DB (safety net before a deploy)
+app.get('/api/admin/db-backup', (req, res) => {
+  const role = getAccessRole(req);
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Accesso negato.' });
+  }
+
+  const configuredPath = String(process.env.DB_PATH || '').trim();
+  const dbPath = configuredPath
+    ? require('path').resolve(configuredPath)
+    : require('path').join(__dirname, 'votation.db');
+
+  if (!fs.existsSync(dbPath)) {
+    return res.status(404).json({ error: 'File DB non trovato.' });
+  }
+
+  const filename = `votation-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.db`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.sendFile(dbPath);
+});
+
 io.on('connection', (socket) => {
   socket.emit('state:init', buildStatePayload());
   socket.emit('runoff:state', buildRunoffState());
@@ -1296,7 +1319,24 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, '0.0.0.0', () => {
+const httpServer_instance = httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server avviato su http://localhost:${PORT}`);
   console.log('Apri dal cellulare con http://IP_DEL_PC:3000');
+});
+
+// Graceful shutdown: on SIGTERM (used by Render during redeploy)
+// close HTTP server first (stop accepting new connections), then close DB
+process.on('SIGTERM', () => {
+  console.log('SIGTERM ricevuto: spegnimento graceful in corso...');
+  httpServer_instance.close(() => {
+    console.log('Server HTTP chiuso.');
+    try {
+      db.close();
+    } catch (_err) {
+      // already closed
+    }
+    process.exit(0);
+  });
+  // Force exit after 10 seconds if close takes too long
+  setTimeout(() => process.exit(0), 10000).unref();
 });

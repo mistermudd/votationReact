@@ -18,22 +18,24 @@
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
-        <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
+        <div id="judgeNameBox" style="margin-top: 16px;">
+          <label for="judgeName" style="display: block; font-weight: 600; margin-bottom: 6px;">Nome giudice</label>
+          <input id="judgeName" type="text" placeholder="Es: Giudice 1" style="max-width: 280px;" />
+        </div>
       </section>
 
-      <section id="voteSection" class="card">
+      <section id="voteSection" class="card" style="display: none;">
         <h2>Il tuo voto</h2>
-        <label for="judgeName">Nome giudice</label>
-        <input id="judgeName" type="text" placeholder="Es: Giudice 1" />
-
         <p>Seleziona un punteggio da 1 a 10:</p>
         <div id="scoreButtons" class="score-buttons"></div>
-        <p id="waitNextMessage" style="display: none;"><strong>Hai gia votato. Attendi la prossima votazione.</strong></p>
-
         <button id="sendVoteBtn" class="button button-primary" style="margin-top: 12px;">
           Invia voto
         </button>
         <p id="feedback"></p>
+      </section>
+
+      <section id="votedSection" class="card" style="display: none;">
+        <p id="votedMessage" style="font-size: 1.1rem; font-weight: 600;">&#10003; Voto inviato! Attendi la prossima esibizione.</p>
       </section>
 
       <section id="runoffSection" class="card" style="display: none;">
@@ -54,17 +56,19 @@
       const scoreButtons = document.getElementById('scoreButtons');
       const sendVoteBtn = document.getElementById('sendVoteBtn');
       const voteSection = document.getElementById('voteSection');
+      const votedSection = document.getElementById('votedSection');
+      const votedMessage = document.getElementById('votedMessage');
       const judgeNameInput = document.getElementById('judgeName');
       const feedback = document.getElementById('feedback');
-      const votedBadge = document.getElementById('votedBadge');
-      const waitNextMessage = document.getElementById('waitNextMessage');
       const runoffSection = document.getElementById('runoffSection');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffVotedBadge = document.getElementById('runoffVotedBadge');
       const runoffChoices = document.getElementById('runoffChoices');
       const runoffFeedback = document.getElementById('runoffFeedback');
       const JUDGE_VOTED_KEY = 'judge-voted-per-lineup';
+      judgeNameInput.value = localStorage.getItem(JUDGE_NAME_KEY) || '';
 
+      const JUDGE_NAME_KEY = 'judge-saved-name';
       let selectedScore = null;
       let canVote = false;
       let currentLineupId = null;
@@ -73,7 +77,8 @@
         currentArtist: '',
         currentSong: '',
         currentLineupId: null,
-        isOpenForVoting: false
+        isOpenForVoting: false,
+        hasActivePerformance: false
       };
 
       function escapeHtml(value) {
@@ -137,13 +142,14 @@
           currentArtist: payload.currentArtist || '',
           currentSong: payload.currentSong || '',
           currentLineupId: payload.currentLineupId || null,
-          isOpenForVoting: Boolean(payload.isOpenForVoting)
+          isOpenForVoting: Boolean(payload.isOpenForVoting),
+          hasActivePerformance: Boolean(payload.hasActivePerformance)
         };
 
         const artist = latestState.currentArtist;
         const open = latestState.isOpenForVoting;
         const song = latestState.currentSong;
-        const hasActivePerformance = Boolean(payload.hasActivePerformance);
+        const hasActivePerformance = latestState.hasActivePerformance;
         currentLineupId = latestState.currentLineupId;
         const alreadyVoted = hasJudgeVoted(currentLineupId, judgeNameInput.value);
 
@@ -153,13 +159,10 @@
         songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
 
         canVote = open && Boolean(artist) && !alreadyVoted;
-        voteSection.style.display = hasActivePerformance ? '' : 'none';
+        voteSection.style.display = (hasActivePerformance && !alreadyVoted) ? '' : 'none';
+        votedSection.style.display = (hasActivePerformance && alreadyVoted) ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
-        votedBadge.style.display = alreadyVoted ? 'block' : 'none';
-        scoreButtons.style.display = alreadyVoted ? 'none' : 'grid';
-        sendVoteBtn.style.display = alreadyVoted ? 'none' : 'inline-block';
-        waitNextMessage.style.display = alreadyVoted ? 'block' : 'none';
 
         if (!hasActivePerformance) {
           feedback.textContent = '';
@@ -249,6 +252,7 @@
       });
 
       judgeNameInput.addEventListener('input', async () => {
+        localStorage.setItem(JUDGE_NAME_KEY, judgeNameInput.value.trim());
         renderState(latestState);
         await refreshRunoffSection();
       });
@@ -298,9 +302,11 @@
           return;
         }
 
-        feedback.textContent = `Voto inviato: ${selectedScore}/10`;
-        animateSuccess(feedback);
         markJudgeVoted(currentLineupId, judgeName);
+        votedMessage.textContent = `\u2713 Voto ${selectedScore}/10 inviato! Attendi la prossima esibizione.`;
+        animateSuccess(votedMessage);
+        voteSection.style.display = 'none';
+        votedSection.style.display = '';
         renderState(latestState);
       });
 
