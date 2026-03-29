@@ -225,7 +225,7 @@ app.post('/api/auth/logout', (req, res) => {
   return res.status(200).json({ message: 'Logout effettuato' });
 });
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 function getActiveSession() {
   return db
