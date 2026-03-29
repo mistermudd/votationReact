@@ -14,15 +14,15 @@
     <div class="container fade-in">
       <section class="hero">
         <h1>Accesso Votazione Live</h1>
-        <p>Seleziona ruolo e inserisci la password per accedere al pannello corretto.</p>
+        <p>Seleziona il profilo corretto e inserisci la password per accedere direttamente alla pagina consentita.</p>
       </section>
 
       <section class="card">
         <h2>Login</h2>
         <label for="role">Ruolo</label>
         <select id="role">
-          <option value="gestione">Gestione</option>
-          <option value="regia">Regia</option>
+          <option value="gestione">Regia</option>
+          <option value="regia">Giudice</option>
           <option value="admin">Admin</option>
         </select>
 
@@ -63,6 +63,11 @@
 
         if (!response.ok) {
           feedback.textContent = data.error || 'Login non riuscito.';
+          return;
+        }
+
+        if (data.role === 'regia') {
+          window.location.href = '/judge.html';
           return;
         }
 

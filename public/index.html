@@ -23,9 +23,9 @@
         <div class="grid grid-2">
           <button class="button button-primary" data-role="judge" data-allow="regia,admin">Giudice</button>
           <button class="button button-secondary" data-role="director" data-allow="gestione,admin">Regia</button>
-          <button class="button button-danger" data-role="performance" data-allow="gestione,admin">Conduzione</button>
-          <button class="button button-secondary" data-role="public" data-allow="all">Pubblico</button>
-          <button class="button button-primary" data-role="lineup" data-allow="gestione,admin">Lineup</button>
+          <button class="button button-danger" data-role="performance" data-allow="admin">Conduzione</button>
+          <button class="button button-secondary" data-role="public" data-allow="admin">Pubblico</button>
+          <button class="button button-primary" data-role="lineup" data-allow="admin">Lineup</button>
           <button class="button button-secondary" data-role="report" data-allow="gestione,admin">Resoconto</button>
         </div>
       </section>
@@ -45,7 +45,7 @@
           return;
         }
 
-        roleInfo.textContent = `Ruolo autenticato: ${data.role}`;
+        roleInfo.textContent = `Ruolo autenticato: ${data.displayRole || data.role}`;
 
         document.querySelectorAll('[data-role]').forEach((btn) => {
           const allow = String(btn.getAttribute('data-allow') || '');
@@ -53,6 +53,10 @@
           const isAllowed = allowedRoles.includes('all') || allowedRoles.includes(data.role);
           btn.style.display = isAllowed ? '' : 'none';
         });
+
+        if (data.role === 'regia') {
+          window.location.href = '/judge.html';
+        }
       }
 
       document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -65,19 +69,16 @@
           const role = btn.getAttribute('data-role');
           socket.emit('role:selected', { role });
 
-          if (role === 'judge') {
-            window.location.href = '/judge.html';
-          } else if (role === 'director') {
-            window.location.href = '/director.html';
-          } else if (role === 'public') {
-            window.location.href = '/public.html';
-          } else if (role === 'performance') {
-            window.location.href = '/performance.html';
-          } else if (role === 'lineup') {
-            window.location.href = '/lineup.html';
-          } else {
-            window.location.href = '/report.html';
-          }
+          const routeMap = {
+            judge: '/judge.html',
+            director: '/director.html',
+            public: '/public.html',
+            performance: '/performance.html',
+            lineup: '/lineup.html',
+            report: '/report.html'
+          };
+
+          window.location.href = routeMap[role] || '/index.html';
         });
       });
 

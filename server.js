@@ -14,6 +14,11 @@ const GESTIONE_USER = process.env.GESTIONE_USER || 'gestione';
 const GESTIONE_PIN = process.env.GESTIONE_PIN || '5678';
 const REGIA_USER = process.env.REGIA_USER || 'regia';
 const REGIA_PIN = process.env.REGIA_PIN || '2468';
+const ROLE_LABELS = {
+  admin: 'Admin',
+  gestione: 'Regia',
+  regia: 'Giudice'
+};
 
 function parseBasicAuth(req) {
   const auth = String(req.headers.authorization || '');
@@ -134,8 +139,9 @@ app.use((req, res, next) => {
 
   const publicPages = new Set(['/', '/login.html', '/public.html']);
   const anyRolePages = new Set(['/index.html']);
-  const gestionePages = new Set(['/performance.html', '/director.html', '/report.html', '/lineup.html']);
+  const gestionePages = new Set(['/director.html', '/report.html']);
   const regiaPages = new Set(['/judge.html']);
+  const adminPages = new Set(['/performance.html', '/lineup.html']);
 
   if (publicPages.has(req.path)) {
     next();
@@ -162,6 +168,15 @@ app.use((req, res, next) => {
 
   if (regiaPages.has(req.path)) {
     if (role !== 'regia' && role !== 'admin') {
+      denyAuth(res);
+      return;
+    }
+    next();
+    return;
+  }
+
+  if (adminPages.has(req.path)) {
+    if (role !== 'admin') {
       denyAuth(res);
       return;
     }
@@ -203,7 +218,11 @@ app.post('/api/auth/login', (req, res) => {
 
   const token = createSession(role);
   res.setHeader('Set-Cookie', `auth_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`);
-  return res.status(200).json({ message: 'Login effettuato', role });
+  return res.status(200).json({
+    message: 'Login effettuato',
+    role,
+    displayRole: ROLE_LABELS[role] || role
+  });
 });
 
 app.get('/api/auth/me', (req, res) => {
@@ -212,7 +231,11 @@ app.get('/api/auth/me', (req, res) => {
     return res.status(200).json({ authenticated: false });
   }
 
-  return res.status(200).json({ authenticated: true, role });
+  return res.status(200).json({
+    authenticated: true,
+    role,
+    displayRole: ROLE_LABELS[role] || role
+  });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -382,6 +405,115 @@ function buildStatePayload() {
   };
 }
 
+function roundScore(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function normalizeWeights(judgeWeight, publicWeight) {
+  const safeJudge = Number.isFinite(judgeWeight) && judgeWeight >= 0 ? judgeWeight : 50;
+  const safePublic = Number.isFinite(publicWeight) && publicWeight >= 0 ? publicWeight : 50;
+  const total = safeJudge + safePublic;
+
+  if (total <= 0) {
+    return {
+      judgePercent: 50,
+      publicPercent: 50,
+      judgeFactor: 0.5,
+      publicFactor: 0.5
+    };
+  }
+
+  return {
+    judgePercent: roundScore((safeJudge / total) * 100),
+    publicPercent: roundScore((safePublic / total) * 100),
+    judgeFactor: safeJudge / total,
+    publicFactor: safePublic / total
+  };
+}
+
+function sortRankingRows(rows) {
+  return rows
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      if (right.totalAverage !== left.totalAverage) {
+        return right.totalAverage - left.totalAverage;
+      }
+
+      return left.performanceOrder - right.performanceOrder;
+    })
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1
+    }));
+}
+
+function buildRankings(summary, judgeWeight, publicWeight) {
+  const weights = normalizeWeights(judgeWeight, publicWeight);
+
+  const judge = sortRankingRows(
+    summary.map((item) => ({
+      lineupId: item.lineupId,
+      artistName: item.artistName,
+      songTitle: item.songTitle,
+      performanceOrder: item.performanceOrder,
+      judgeVotes: item.judgeVotes,
+      publicVotes: item.publicVotes,
+      totalVotes: item.totalVotes,
+      judgeAverage: item.judgeAverage,
+      publicAverage: item.publicAverage,
+      totalAverage: item.totalAverage,
+      score: roundScore(item.judgeAverage)
+    }))
+  );
+
+  const publicRanking = sortRankingRows(
+    summary.map((item) => ({
+      lineupId: item.lineupId,
+      artistName: item.artistName,
+      songTitle: item.songTitle,
+      performanceOrder: item.performanceOrder,
+      judgeVotes: item.judgeVotes,
+      publicVotes: item.publicVotes,
+      totalVotes: item.totalVotes,
+      judgeAverage: item.judgeAverage,
+      publicAverage: item.publicAverage,
+      totalAverage: item.totalAverage,
+      score: roundScore(item.publicAverage)
+    }))
+  );
+
+  const weighted = sortRankingRows(
+    summary.map((item) => ({
+      lineupId: item.lineupId,
+      artistName: item.artistName,
+      songTitle: item.songTitle,
+      performanceOrder: item.performanceOrder,
+      judgeVotes: item.judgeVotes,
+      publicVotes: item.publicVotes,
+      totalVotes: item.totalVotes,
+      judgeAverage: item.judgeAverage,
+      publicAverage: item.publicAverage,
+      totalAverage: item.totalAverage,
+      score: roundScore(
+        item.judgeAverage * weights.judgeFactor + item.publicAverage * weights.publicFactor
+      )
+    }))
+  );
+
+  return {
+    weights: {
+      judge: weights.judgePercent,
+      public: weights.publicPercent
+    },
+    judge,
+    public: publicRanking,
+    weighted
+  };
+}
+
 function emitState(eventName) {
   const payload = buildStatePayload();
   io.emit('state:updated', payload);
@@ -474,11 +606,11 @@ app.get('/api/state', (_req, res) => {
   res.json(buildStatePayload());
 });
 
-app.get('/api/lineup', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.get('/api/lineup', requireRoles(['admin']), (_req, res) => {
   res.json({ lineup: getLineup() });
 });
 
-app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/lineup', requireRoles(['admin']), (req, res) => {
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
   const performanceOrder = Number(req.body.performanceOrder);
@@ -516,7 +648,7 @@ app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 });
 
-app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
+app.put('/api/lineup/:id', requireRoles(['admin']), (req, res) => {
   const lineupId = Number(req.params.id);
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
@@ -564,7 +696,7 @@ app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 });
 
-app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
+app.delete('/api/lineup/:id', requireRoles(['admin']), (req, res) => {
   const lineupId = Number(req.params.id);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
@@ -594,7 +726,7 @@ app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) =>
   }
 });
 
-app.post('/api/artist', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/artist', requireRoles(['admin']), (req, res) => {
   const artistName = String(req.body.artistName || '').trim();
 
   if (!artistName) {
@@ -636,7 +768,7 @@ app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), (req, res)
   return res.status(200).json({ message: 'Esibizione attivata', state: payload });
 });
 
-app.post('/api/performance/start', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/performance/start', requireRoles(['admin']), (req, res) => {
   const lineupId = Number(req.body.lineupId);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
@@ -651,7 +783,7 @@ app.post('/api/performance/start', requireRoles(['gestione', 'admin']), (req, re
   return res.status(200).json({ message: 'Esibizione avviata', state: payload });
 });
 
-app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/pause', requireRoles(['admin']), (_req, res) => {
   const active = getActiveSession();
 
   if (!active) {
@@ -668,7 +800,7 @@ app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), (_req, r
   return res.status(200).json({ message: 'Votazione in pausa', state: payload });
 });
 
-app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/resume', requireRoles(['admin']), (_req, res) => {
   const active = getActiveSession();
 
   if (!active) {
@@ -685,7 +817,7 @@ app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), (_req, 
   return res.status(200).json({ message: 'Votazione riaperta', state: payload });
 });
 
-app.post('/api/performance/terminate', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/terminate', requireRoles(['admin']), (_req, res) => {
   const active = getActiveSession();
 
   if (!active) {
@@ -705,7 +837,7 @@ app.post('/api/performance/terminate', requireRoles(['gestione', 'admin']), (_re
   return res.status(200).json({ message: 'Esibizione terminata', state: payload });
 });
 
-app.post('/api/performance/next', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/next', requireRoles(['admin']), (_req, res) => {
   const active = getActiveSession();
   const currentOrder = active ? active.performance_order : null;
 
@@ -826,6 +958,8 @@ app.post('/api/admin/clear-votes', requireRoles(['admin']), (_req, res) => {
 
 app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
   const lineup = getLineup();
+  const judgeWeight = Number(_req.query.judgeWeight);
+  const publicWeight = Number(_req.query.publicWeight);
 
   const votes = db
     .prepare(
@@ -864,11 +998,14 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
     };
   });
 
+  const rankings = buildRankings(summary, judgeWeight, publicWeight);
+
   res.json({
     generatedAt: new Date().toISOString(),
     currentState: buildStatePayload(),
     lineup,
     summary,
+    rankings,
     votes
   });
 });

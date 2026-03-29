@@ -88,6 +88,24 @@ h3 {
   grid-template-columns: repeat(2, 1fr);
 }
 
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e7e0d3;
+  vertical-align: top;
+}
+
+th {
+  font-family: "Bodoni 72", "Times New Roman", serif;
+  font-size: 0.95rem;
+}
+
 input,
 select {
   width: 100%;
@@ -154,6 +172,23 @@ select {
   animation: fadeIn 0.4s ease;
 }
 
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.weight-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.weight-controls label {
+  display: block;
+  font-weight: 700;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -177,6 +212,10 @@ select {
 
   .score-buttons {
     grid-template-columns: repeat(5, minmax(40px, 1fr));
+  }
+
+  .weight-controls {
+    grid-template-columns: 1fr;
   }
 
   .lineup-row {

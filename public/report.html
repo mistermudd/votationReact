@@ -19,6 +19,37 @@
       </section>
 
       <section class="card">
+        <h2>Classifiche</h2>
+        <div class="weight-controls">
+          <label>
+            Peso giudici
+            <input id="judgeWeight" type="number" min="0" step="1" value="50" />
+          </label>
+          <label>
+            Peso pubblico
+            <input id="publicWeight" type="number" min="0" step="1" value="50" />
+          </label>
+        </div>
+        <p id="weightInfo"></p>
+
+        <div class="grid grid-2">
+          <div>
+            <h3>Classifica Giudici</h3>
+            <div id="judgeRanking"></div>
+          </div>
+          <div>
+            <h3>Classifica Pubblico</h3>
+            <div id="publicRanking"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <h3>Classifica Ponderata</h3>
+          <div id="weightedRanking"></div>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Sintesi per artista</h2>
         <div id="summary"></div>
       </section>
@@ -33,6 +64,12 @@
     <script>
       const socket = io();
       const generatedAtEl = document.getElementById('generatedAt');
+      const judgeWeightEl = document.getElementById('judgeWeight');
+      const publicWeightEl = document.getElementById('publicWeight');
+      const weightInfoEl = document.getElementById('weightInfo');
+      const judgeRankingEl = document.getElementById('judgeRanking');
+      const publicRankingEl = document.getElementById('publicRanking');
+      const weightedRankingEl = document.getElementById('weightedRanking');
       const summaryEl = document.getElementById('summary');
       const votesEl = document.getElementById('votes');
 
@@ -43,8 +80,70 @@
           .replaceAll('>', '&gt;');
       }
 
+      function formatScore(value) {
+        return Number(value || 0).toLocaleString('it-IT', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2
+        });
+      }
+
+      function renderRankingTable(rows, type) {
+        if (!rows || !rows.length) {
+          return '<p>Nessun dato disponibile.</p>';
+        }
+
+        const scoreLabel = type === 'weighted' ? 'Punteggio' : 'Media';
+        const detailsLabel = type === 'weighted' ? 'Dettaglio' : 'Voti';
+
+        return `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Artista</th>
+                  <th>${scoreLabel}</th>
+                  <th>${detailsLabel}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .map((row) => {
+                    const artistLabel = `${row.performanceOrder}. ${escapeHtml(row.artistName)}${
+                      row.songTitle ? ` - ${escapeHtml(row.songTitle)}` : ''
+                    }`;
+                    const detail =
+                      type === 'judge'
+                        ? `${row.judgeVotes} voti`
+                        : type === 'public'
+                          ? `${row.publicVotes} voti`
+                          : `G ${formatScore(row.judgeAverage)} | P ${formatScore(row.publicAverage)}`;
+
+                    return `
+                      <tr>
+                        <td>${row.rank}</td>
+                        <td>${artistLabel}</td>
+                        <td>${formatScore(row.score)}</td>
+                        <td>${detail}</td>
+                      </tr>
+                    `;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
       function renderReport(data) {
         generatedAtEl.textContent = `Aggiornato: ${new Date(data.generatedAt).toLocaleString('it-IT')}`;
+        weightInfoEl.textContent = `Pesi applicati: giudici ${formatScore(
+          data.rankings?.weights?.judge
+        )}% | pubblico ${formatScore(data.rankings?.weights?.public)}%`;
+
+        judgeRankingEl.innerHTML = renderRankingTable(data.rankings?.judge || [], 'judge');
+        publicRankingEl.innerHTML = renderRankingTable(data.rankings?.public || [], 'public');
+        weightedRankingEl.innerHTML = renderRankingTable(data.rankings?.weighted || [], 'weighted');
 
         if (!data.summary || !data.summary.length) {
           summaryEl.innerHTML = '<p>Nessun dato disponibile.</p>';
@@ -72,7 +171,11 @@
       }
 
       async function loadReport() {
-        const response = await fetch('/api/report');
+        const params = new URLSearchParams({
+          judgeWeight: judgeWeightEl.value || '0',
+          publicWeight: publicWeightEl.value || '0'
+        });
+        const response = await fetch(`/api/report?${params.toString()}`);
         const data = await response.json();
         renderReport(data);
       }
@@ -81,6 +184,8 @@
       socket.on('artist:changed', loadReport);
       socket.on('vote:updated', loadReport);
       socket.on('voting:closed', loadReport);
+      judgeWeightEl.addEventListener('input', loadReport);
+      publicWeightEl.addEventListener('input', loadReport);
 
       loadReport();
     </script>
