@@ -26,6 +26,14 @@
         </button>
         <p id="feedback"></p>
       </section>
+
+      <section id="runoffSection" class="card" style="display: none;">
+        <h2>Ballottaggio Attivo</h2>
+        <p id="runoffStatus">Ballottaggio non attivo.</p>
+        <p id="runoffVotedBadge" style="display: none;"><strong>Hai gia votato in questo ballottaggio</strong></p>
+        <div id="runoffChoices" class="grid"></div>
+        <p id="runoffFeedback"></p>
+      </section>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -38,6 +46,11 @@
       const sendVoteBtn = document.getElementById('sendVoteBtn');
       const feedback = document.getElementById('feedback');
       const votedBadge = document.getElementById('votedBadge');
+      const runoffSection = document.getElementById('runoffSection');
+      const runoffStatus = document.getElementById('runoffStatus');
+      const runoffVotedBadge = document.getElementById('runoffVotedBadge');
+      const runoffChoices = document.getElementById('runoffChoices');
+      const runoffFeedback = document.getElementById('runoffFeedback');
       const PUBLIC_DEVICE_KEY = 'public-voter-device-id';
 
       let selectedScore = null;
@@ -46,6 +59,16 @@
       let currentLineupId = null;
       let currentArtist = '';
       let isOpenForVoting = false;
+      let runoffState = null;
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
 
       function getOrCreateDeviceId() {
         let deviceId = localStorage.getItem(PUBLIC_DEVICE_KEY);
@@ -109,6 +132,51 @@
         refreshVoteAvailability();
       }
 
+      async function refreshRunoffSection() {
+        if (!runoffState || !runoffState.hasActiveRunoff) {
+          runoffSection.style.display = 'none';
+          runoffFeedback.textContent = '';
+          return;
+        }
+
+        runoffSection.style.display = '';
+
+        const voterName = getOrCreateDeviceId();
+        let hasVoted = false;
+        const params = new URLSearchParams({ role: 'public', voterName });
+        const statusResponse = await fetch(`/api/runoff/vote-status?${params.toString()}`);
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          hasVoted = Boolean(statusData.hasVoted);
+        }
+
+        runoffStatus.textContent = runoffState.isOpenForVoting
+          ? 'Ballottaggio aperto: scegli un solo artista.'
+          : 'Ballottaggio chiuso.';
+        runoffVotedBadge.style.display = hasVoted ? 'block' : 'none';
+
+        runoffChoices.innerHTML = (runoffState.artists || [])
+          .map((artist) => {
+            const disabled = !runoffState.isOpenForVoting || hasVoted;
+            const label = `${escapeHtml(artist.artistName)}${
+              artist.performanceName ? ` - ${escapeHtml(artist.performanceName)}` : ''
+            }`;
+            return `<button class="button button-primary" data-runoff-lineup-id="${artist.lineupId}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+          })
+          .join('');
+      }
+
+      async function loadRunoffState() {
+        const response = await fetch('/api/runoff/state');
+        if (!response.ok) {
+          runoffState = null;
+          runoffSection.style.display = 'none';
+          return;
+        }
+        runoffState = await response.json();
+        await refreshRunoffSection();
+      }
+
       socket.on('state:init', (payload) => renderState(payload));
       socket.on('state:updated', (payload) => renderState(payload));
       socket.on('artist:changed', (payload) => {
@@ -121,6 +189,23 @@
       socket.on('votes:cleared', (payload) => {
         feedback.textContent = '';
         renderState(payload);
+      });
+      socket.on('runoff:state', async (payload) => {
+        runoffState = payload;
+        await refreshRunoffSection();
+      });
+      socket.on('runoff:started', async (payload) => {
+        runoffFeedback.textContent = '';
+        runoffState = payload;
+        await refreshRunoffSection();
+      });
+      socket.on('runoff:closed', async (payload) => {
+        runoffState = payload;
+        await refreshRunoffSection();
+      });
+      socket.on('runoff:vote-updated', async (payload) => {
+        runoffState = payload;
+        await refreshRunoffSection();
       });
 
       sendVoteBtn.addEventListener('click', async () => {
@@ -173,6 +258,41 @@
         isSubmitting = false;
         sendVoteBtn.disabled = false;
       });
+
+      runoffChoices.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+          return;
+        }
+
+        const selectedLineupId = Number(target.getAttribute('data-runoff-lineup-id'));
+        if (!selectedLineupId) {
+          return;
+        }
+
+        const confirmed = window.confirm(`Confermi il voto ballottaggio per ${target.textContent}?`);
+        if (!confirmed) {
+          return;
+        }
+
+        const response = await fetch('/api/runoff/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'public',
+            voterName: getOrCreateDeviceId(),
+            selectedLineupId
+          })
+        });
+
+        const data = await response.json();
+        runoffFeedback.textContent = response.ok
+          ? data.message || 'Voto ballottaggio registrato.'
+          : data.error || 'Errore voto ballottaggio.';
+        await loadRunoffState();
+      });
+
+      loadRunoffState();
     </script>
   </body>
 </html>
