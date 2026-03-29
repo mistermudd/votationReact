@@ -16,7 +16,7 @@
         <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
       </section>
 
-      <section class="card">
+      <section id="voteSection" class="card">
         <h2>Invia il tuo voto</h2>
         <p>Punteggio da 1 a 10:</p>
         <div id="scoreButtons" class="score-buttons"></div>
@@ -45,6 +45,7 @@
       const statusChip = document.getElementById('statusChip');
       const scoreButtons = document.getElementById('scoreButtons');
       const sendVoteBtn = document.getElementById('sendVoteBtn');
+      const voteSection = document.getElementById('voteSection');
       const feedback = document.getElementById('feedback');
       const votedBadge = document.getElementById('votedBadge');
       const waitNextMessage = document.getElementById('waitNextMessage');
@@ -134,12 +135,20 @@
         const artist = payload.currentArtist || '';
         const song = payload.currentSong || '';
         const open = Boolean(payload.isOpenForVoting);
+        const hasActivePerformance = Boolean(payload.hasActivePerformance);
         currentArtist = artist;
         isOpenForVoting = open;
         currentLineupId = payload.currentLineupId || null;
 
         artistLabel.textContent = artist ? `Artista in esibizione: ${artist}` : "In attesa dell'artista...";
         songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
+        voteSection.style.display = hasActivePerformance ? '' : 'none';
+
+        if (!hasActivePerformance) {
+          feedback.textContent = '';
+          selectedScore = null;
+          document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        }
 
         refreshVoteAvailability();
       }

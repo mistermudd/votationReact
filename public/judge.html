@@ -21,7 +21,7 @@
         <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
       </section>
 
-      <section class="card">
+      <section id="voteSection" class="card">
         <h2>Il tuo voto</h2>
         <label for="judgeName">Nome giudice</label>
         <input id="judgeName" type="text" placeholder="Es: Giudice 1" />
@@ -53,6 +53,7 @@
       const songLabel = document.getElementById('songLabel');
       const scoreButtons = document.getElementById('scoreButtons');
       const sendVoteBtn = document.getElementById('sendVoteBtn');
+      const voteSection = document.getElementById('voteSection');
       const judgeNameInput = document.getElementById('judgeName');
       const feedback = document.getElementById('feedback');
       const votedBadge = document.getElementById('votedBadge');
@@ -142,6 +143,7 @@
         const artist = latestState.currentArtist;
         const open = latestState.isOpenForVoting;
         const song = latestState.currentSong;
+        const hasActivePerformance = Boolean(payload.hasActivePerformance);
         currentLineupId = latestState.currentLineupId;
         const alreadyVoted = hasJudgeVoted(currentLineupId, judgeNameInput.value);
 
@@ -151,12 +153,19 @@
         songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
 
         canVote = open && Boolean(artist) && !alreadyVoted;
+        voteSection.style.display = hasActivePerformance ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         votedBadge.style.display = alreadyVoted ? 'block' : 'none';
         scoreButtons.style.display = alreadyVoted ? 'none' : 'grid';
         sendVoteBtn.style.display = alreadyVoted ? 'none' : 'inline-block';
         waitNextMessage.style.display = alreadyVoted ? 'block' : 'none';
+
+        if (!hasActivePerformance) {
+          feedback.textContent = '';
+          selectedScore = null;
+          document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        }
       }
 
       async function refreshRunoffSection() {
