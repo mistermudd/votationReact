@@ -8,9 +8,9 @@
     "dev": "node --watch server.js",
     "test": "echo \"No tests configured\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["voting", "live-event", "socketio", "sqlite"],
+  "author": "mistermudd",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "better-sqlite3": "^12.8.0",

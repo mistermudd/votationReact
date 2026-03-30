@@ -1,21 +1,30 @@
 # Security Policy
 
-## Supported Versions
+## Versioni supportate
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+| Versione | Supportata |
+|---|---|
+| `main` (ultima) | ✅ |
+| Versioni precedenti | ❌ |
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+Si raccomanda sempre di usare l'ultima versione del branch `main`.
 
-## Reporting a Vulnerability
+## Segnalare una vulnerabilità
 
-Use this section to tell people how to report a vulnerability.
+Se scopri una vulnerabilità di sicurezza, apri una **GitHub Security Advisory** privata:
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+1. Vai su `https://github.com/mistermudd/votationReact/security/advisories/new`
+2. Descrivi la vulnerabilità, i passi per riprodurla e l'impatto potenziale
+3. Non pubblicare dettagli in Issue pubbliche finché non è stata risolta
+
+Riceverai una risposta entro 72 ore.
+
+## Buone pratiche per il deploy
+
+- **Cambia sempre** le credenziali di default (`ADMIN_PIN`, `GESTIONE_PIN`, `REGIA_PIN`) prima di esporre il sistema pubblicamente
+- Usa variabili d'ambiente su Render (mai committare credenziali nel repository)
+- Il cookie `auth_token` è `HttpOnly`: non è accessibile da JavaScript lato client
+- Il database SQLite usa **WAL mode** per garantire integrità delle scritture
+- Configura `GITHUB_BACKUP_TOKEN` e `GITHUB_BACKUP_GIST_ID` per il backup automatico
+- L'endpoint `/api/admin/db-backup` è protetto dal ruolo `admin`
+

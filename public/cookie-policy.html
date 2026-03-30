@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cookie Policy - Votation Live</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="top-right">
+      <button class="button button-secondary" type="button" onclick="window.history.back();">Torna indietro</button>
+    </div>
+
+    <div class="container fade-in">
+      <section class="hero">
+        <h1><span class="page-icon">&#127850;</span> Cookie Policy</h1>
+        <p>Ultimo aggiornamento: marzo 2026</p>
+      </section>
+
+      <section class="card">
+        <h2>Cosa sono i cookie e il localStorage</h2>
+        <p>
+          I cookie sono piccoli file di testo salvati dal browser sul tuo dispositivo. Il <strong>localStorage</strong>
+          è un'area di memoria locale del browser usata per conservare dati senza scadenza automatica.
+          Questo sistema utilizza entrambi esclusivamente per garantire il corretto funzionamento
+          dell'applicazione, <strong>senza alcun scopo di profilazione o tracciamento pubblicitario</strong>.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Cookie tecnici utilizzati</h2>
+        <table style="width:100%; border-collapse:collapse; margin-top: 12px;">
+          <thead>
+            <tr style="background: var(--surface-2, #f0f0f0);">
+              <th style="padding: 10px; text-align:left;">Nome</th>
+              <th style="padding: 10px; text-align:left;">Tipo</th>
+              <th style="padding: 10px; text-align:left;">Scopo</th>
+              <th style="padding: 10px; text-align:left;">Durata</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 10px;"><code>auth_token</code></td>
+              <td style="padding: 10px;">Cookie HTTP (HttpOnly)</td>
+              <td style="padding: 10px;">Autentica la sessione per i ruoli Regia, Giudice e Admin. Necessario per accedere alle pagine protette.</td>
+              <td style="padding: 10px;">Sessione (eliminato alla chiusura del browser o al logout)</td>
+            </tr>
+            <tr style="background: var(--surface-2, #f8f8f8);">
+              <td style="padding: 10px;"><code>public-voter-device-id</code></td>
+              <td style="padding: 10px;">localStorage</td>
+              <td style="padding: 10px;">Identificativo anonimo e casuale del dispositivo del pubblico, usato per evitare voti doppi nella stessa esibizione. Non contiene dati personali.</td>
+              <td style="padding: 10px;">Persistente (conservato nel browser fino alla pulizia manuale)</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px;"><code>judge-saved-name</code></td>
+              <td style="padding: 10px;">localStorage</td>
+              <td style="padding: 10px;">Salva il nome del giudice inserito per evitare di reinserirlo ad ogni accesso.</td>
+              <td style="padding: 10px;">Persistente (conservato nel browser fino alla pulizia manuale)</td>
+            </tr>
+            <tr style="background: var(--surface-2, #f8f8f8);">
+              <td style="padding: 10px;"><code>judge-voted-per-lineup</code></td>
+              <td style="padding: 10px;">localStorage</td>
+              <td style="padding: 10px;">Tiene traccia delle esibizioni per cui il giudice ha già votato, evitando voti doppi anche dopo un aggiornamento della pagina.</td>
+              <td style="padding: 10px;">Persistente (eliminato automaticamente al comando "Cancella voti" da Admin)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Cookie di terze parti</h2>
+        <p>
+          Questo sistema <strong>non utilizza</strong> cookie di terze parti, cookie pubblicitari,
+          cookie di analisi (es. Google Analytics) né strumenti di tracciamento comportamentale.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Come eliminare i dati salvati</h2>
+        <p>Puoi in qualsiasi momento eliminare i dati salvati dal tuo browser:</p>
+        <ul style="margin-top: 8px; padding-left: 20px; line-height: 1.9;">
+          <li><strong>Chrome / Edge:</strong> Impostazioni → Privacy e sicurezza → Cancella dati di navigazione → Seleziona "Cookie" e "Dati siti"</li>
+          <li><strong>Firefox:</strong> Impostazioni → Privacy e sicurezza → Cookie e dati dei siti → Pulisci dati</li>
+          <li><strong>Safari:</strong> Preferenze → Privacy → Gestisci dati siti web → Rimuovi tutto</li>
+          <li><strong>Da codice (per sviluppatori):</strong> <code>localStorage.clear()</code> nella console del browser</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Base giuridica e consenso</h2>
+        <p>
+          I dati memorizzati sono esclusivamente di natura tecnica e strettamente necessari al funzionamento
+          del servizio (art. 122 co. 1 Codice Privacy e art. 6 c.1 lett. b) GDPR).
+          Non viene raccolta nessuna informazione personale identificabile tramite i meccanismi sopra descritti.
+          Non è richiesto il consenso esplicito per i soli cookie tecnici necessari.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Contatti</h2>
+        <p>
+          Per qualsiasi domanda relativa a questa policy, contatta l'organizzatore dell'evento
+          che ha predisposto il sistema di votazione.
+        </p>
+      </section>
+    </div>
+  </body>
+</html>
