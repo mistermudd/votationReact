@@ -253,7 +253,7 @@ app.use((req, res, next) => {
 
   const publicPages = new Set(['/', '/login.html', '/public.html', '/runoff-public.html']);
   const anyRolePages = new Set(['/index.html']);
-  const gestionePages = new Set(['/director.html', '/report.html', '/lineup.html', '/runoff-manage.html']);
+  const gestionePages = new Set(['/director.html', '/report.html', '/lineup.html', '/runoff-manage.html', '/qr-access.html']);
   const regiaPages = new Set(['/judge.html', '/runoff-judge.html']);
   const adminPages = new Set(['/performance.html']);
 
