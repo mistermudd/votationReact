@@ -81,6 +81,23 @@
         <p id="votingState">Votazione chiusa.</p>
         <p id="nextArtist">Nessun prossimo artista disponibile.</p>
       </section>
+
+      <section class="card">
+        <h2>Gestione Dati</h2>
+        <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+          <button id="exportLineupBtn" class="button button-secondary" type="button">Scarica Lineup</button>
+          <label class="button button-secondary" style="cursor: pointer; margin-bottom: 0;">
+            Carica Lineup
+            <input id="importLineupInput" type="file" accept=".json" style="display: none;" />
+          </label>
+          <button id="exportVotesBtn" class="button button-secondary" type="button">Scarica Voti</button>
+          <label class="button button-secondary" style="cursor: pointer; margin-bottom: 0;">
+            Carica Voti
+            <input id="importVotesInput" type="file" accept=".json" style="display: none;" />
+          </label>
+        </div>
+        <p id="dataFeedback" style="color: #2c5f2d;"></p>
+      </section>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -88,9 +105,14 @@
       const socket = io();
       const lineupSelect = document.getElementById('lineupSelect');
       const feedback = document.getElementById('feedback');
+      const dataFeedback = document.getElementById('dataFeedback');
       const currentArtist = document.getElementById('currentArtist');
       const votingState = document.getElementById('votingState');
       const nextArtist = document.getElementById('nextArtist');
+      const exportLineupBtn = document.getElementById('exportLineupBtn');
+      const importLineupInput = document.getElementById('importLineupInput');
+      const exportVotesBtn = document.getElementById('exportVotesBtn');
+      const importVotesInput = document.getElementById('importVotesInput');
 
       function renderLineup(payload) {
         const lineup = payload.lineup || [];
@@ -156,6 +178,120 @@
         }
 
         await sendAction('/api/admin/clear-votes');
+      });
+
+      exportLineupBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('/api/admin/export-lineup');
+          if (!response.ok) {
+            dataFeedback.textContent = 'Errore durante lo scaricamento della lineup.';
+            return;
+          }
+
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `lineup-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          dataFeedback.textContent = 'Lineup scaricata con successo.';
+        } catch (_error) {
+          dataFeedback.textContent = 'Errore durante lo scaricamento della lineup.';
+        }
+      });
+
+      importLineupInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) {
+          return;
+        }
+
+        const confirmed = window.confirm('Confermi l\'importazione della nuova lineup? I dati attuali verranno sostituiti.');
+        if (!confirmed) {
+          importLineupInput.value = '';
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+
+          const response = await fetch('/api/admin/import-lineup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+          dataFeedback.textContent = response.ok
+            ? `Lineup importata con successo (${result.count} elementi).`
+            : result.error || 'Errore durante l\'importazione della lineup.';
+
+          importLineupInput.value = '';
+        } catch (_error) {
+          dataFeedback.textContent = 'Errore durante la lettura del file JSON.';
+          importLineupInput.value = '';
+        }
+      });
+
+      exportVotesBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('/api/admin/export-votes');
+          if (!response.ok) {
+            dataFeedback.textContent = 'Errore durante lo scaricamento dei voti.';
+            return;
+          }
+
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `votes-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          dataFeedback.textContent = 'Voti scaricati con successo.';
+        } catch (_error) {
+          dataFeedback.textContent = 'Errore durante lo scaricamento dei voti.';
+        }
+      });
+
+      importVotesInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) {
+          return;
+        }
+
+        const confirmed = window.confirm('Confermi l\'importazione dei nuovi voti? I dati attuali verranno sostituiti.');
+        if (!confirmed) {
+          importVotesInput.value = '';
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+
+          const response = await fetch('/api/admin/import-votes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+
+          const result = await response.json();
+          dataFeedback.textContent = response.ok
+            ? `Voti importati con successo (${result.count} elementi).`
+            : result.error || 'Errore durante l\'importazione dei voti.';
+
+          importVotesInput.value = '';
+        } catch (_error) {
+          dataFeedback.textContent = 'Errore durante la lettura del file JSON.';
+          importVotesInput.value = '';
+        }
       });
 
       socket.on('state:init', (payload) => renderState(payload));

@@ -1418,6 +1418,106 @@ app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), (_req, res
   return res.status(200).json({ message: 'Tutte le votazioni sono state effettuate', state: payload });
 });
 
+app.get('/api/admin/export-lineup', requireRoles(['admin']), (_req, res) => {
+  const lineup = getLineup();
+  const filename = `lineup-${new Date().toISOString().split('T')[0]}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.json(lineup);
+});
+
+app.post('/api/admin/import-lineup', requireRoles(['admin']), (req, res) => {
+  const data = req.body;
+  if (!Array.isArray(data)) {
+    return res.status(400).json({ error: 'Array di lineup atteso' });
+  }
+
+  const importLineup = db.transaction(() => {
+    db.prepare('DELETE FROM lineup').run();
+    const insert = db.prepare(
+      `
+      INSERT INTO lineup (id, artist_name, song_title, performance_order, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `
+    );
+
+    for (const item of data) {
+      insert.run(
+        item.id,
+        item.artist_name,
+        item.song_title || null,
+        item.performance_order,
+        item.created_at || new Date().toISOString()
+      );
+    }
+  });
+
+  try {
+    importLineup();
+    db.exec(`UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM lineup) WHERE name = 'lineup'`);
+    io.emit('lineup:updated', { lineup: getLineup() });
+    return res.status(200).json({ message: 'Lineup importata con successo', count: data.length });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Errore durante l\'importazione lineup' });
+  }
+});
+
+app.get('/api/admin/export-votes', requireRoles(['admin']), (_req, res) => {
+  const votes = db
+    .prepare(
+      `
+      SELECT id, lineup_id, role, voter_name, score, created_at, updated_at
+      FROM votes
+      ORDER BY lineup_id ASC, role ASC, voter_name ASC
+    `
+    )
+    .all();
+
+  const filename = `votes-${new Date().toISOString().split('T')[0]}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.json(votes);
+});
+
+app.post('/api/admin/import-votes', requireRoles(['admin']), (req, res) => {
+  const data = req.body;
+  if (!Array.isArray(data)) {
+    return res.status(400).json({ error: 'Array di voti atteso' });
+  }
+
+  const importVotes = db.transaction(() => {
+    db.prepare('DELETE FROM votes').run();
+    const insert = db.prepare(
+      `
+      INSERT INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `
+    );
+
+    for (const item of data) {
+      insert.run(
+        item.id,
+        item.lineup_id,
+        item.role,
+        item.voter_name,
+        item.score,
+        item.created_at || new Date().toISOString(),
+        item.updated_at || null
+      );
+    }
+  });
+
+  try {
+    importVotes();
+    db.exec(`UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM votes) WHERE name = 'votes'`);
+    allVotesCompleted = false;
+    const payload = emitState('votes:updated');
+    return res.status(200).json({ message: 'Voti importati con successo', count: data.length, state: payload });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Errore durante l\'importazione voti' });
+  }
+});
+
 app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
   const lineup = getLineup();
   const judgeWeight = Number(_req.query.judgeWeight);
