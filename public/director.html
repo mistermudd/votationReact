@@ -5,6 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Regia - Votazione Live</title>
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .control-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+
+      .control-actions .button {
+        min-width: 160px;
+        min-height: 64px;
+        display: inline-flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        line-height: 1.2;
+        text-align: center;
+      }
+
+      .control-actions .button .btn-icon {
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+      }
+    </style>
   </head>
   <body>
     <div class="top-right">
@@ -22,10 +46,33 @@
         <label for="lineupSelect">Artista in lineup</label>
         <select id="lineupSelect"></select>
 
-        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
-          <button id="startVoting" class="button button-secondary">Avvia votazione</button>
-          <button id="closeVoting" class="button button-danger">Chiudi votazione</button>
+        <div class="control-actions">
+          <button id="startVoting" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">▶</span>
+            <span>Avvia<br />votazione</span>
+          </button>
+          <button id="pauseVoting" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏸</span>
+            <span>Stop<br />votazione</span>
+          </button>
+          <button id="resumeVoting" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏯</span>
+            <span>Riprendi<br />votazione</span>
+          </button>
+          <button id="nextAuto" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏭</span>
+            <span>Prossimo in gara<br />automatico</span>
+          </button>
+          <button id="closeVoting" class="button button-danger" type="button">
+            <span class="btn-icon" aria-hidden="true">■</span>
+            <span>Chiudi<br />votazione</span>
+          </button>
+          <button id="completeVoting" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">✅</span>
+            <span>Tutte votazioni<br />effettuate</span>
+          </button>
         </div>
+        <p id="directorFeedback" style="margin-top: 10px;"></p>
       </section>
 
       <section class="card">
@@ -49,6 +96,7 @@
       const liveAverage = document.getElementById('liveAverage');
       const judgeStats = document.getElementById('judgeStats');
       const publicStats = document.getElementById('publicStats');
+      const directorFeedback = document.getElementById('directorFeedback');
 
       let lastKnownLineupId = null;
       let lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
@@ -69,6 +117,7 @@
         const artist = payload.currentArtist || '';
         const open = Boolean(payload.isOpenForVoting);
         const paused = Boolean(payload.isPaused);
+        const completed = Boolean(payload.allVotesCompleted);
         const lineupId = payload.currentLineupId || null;
         const incomingStats = payload.stats || { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
 
@@ -84,11 +133,13 @@
         liveArtist.textContent = artist
           ? `Artista corrente: ${artist}`
           : 'Nessun artista selezionato.';
-        liveStatus.textContent = open
-          ? 'Votazione aperta.'
-          : paused
-            ? 'Votazione in pausa.'
-            : 'Votazione chiusa.';
+        liveStatus.textContent = completed
+          ? 'Tutte le votazioni sono state effettuate.'
+          : open
+            ? 'Votazione aperta.'
+            : paused
+              ? 'Votazione in pausa.'
+              : 'Votazione chiusa.';
         liveCount.textContent = `Voti totali: ${stats.total.count || 0}`;
         liveAverage.textContent = `Media totale: ${stats.total.average || 0}`;
         judgeStats.textContent = `Giudici: ${stats.byRole.judge.count || 0} voti | media ${stats.byRole.judge.average || 0}`;
@@ -99,20 +150,66 @@
         const lineupId = Number(lineupSelect.value);
 
         if (!lineupId) {
+          directorFeedback.textContent = 'Seleziona un artista in lineup.';
           return;
         }
 
-        await fetch('/api/lineup/activate', {
+        const response = await fetch('/api/lineup/activate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lineupId })
         });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Esibizione avviata.'
+          : data.error || 'Errore avvio esibizione.';
+      });
+
+      document.getElementById('pauseVoting').addEventListener('click', async () => {
+        const response = await fetch('/api/performance/pause', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Votazione messa in pausa.'
+          : data.error || 'Errore durante lo stop della votazione.';
+      });
+
+      document.getElementById('resumeVoting').addEventListener('click', async () => {
+        const response = await fetch('/api/performance/resume', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Votazione ripresa.'
+          : data.error || 'Errore durante la ripresa della votazione.';
+      });
+
+      document.getElementById('nextAuto').addEventListener('click', async () => {
+        const response = await fetch('/api/performance/next', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Passato al prossimo in gara.'
+          : data.error || 'Errore nel passaggio al prossimo in gara.';
       });
 
       document.getElementById('closeVoting').addEventListener('click', async () => {
-        await fetch('/api/close-voting', {
+        const response = await fetch('/api/close-voting', {
           method: 'POST' }
         );
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Votazione chiusa.'
+          : data.error || 'Errore nella chiusura votazione.';
+      });
+
+      document.getElementById('completeVoting').addEventListener('click', async () => {
+        const confirmed = window.confirm('Confermi che tutte le votazioni sono state effettuate?');
+        if (!confirmed) {
+          return;
+        }
+
+        const response = await fetch('/api/voting/complete', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Stato votazioni completate impostato.'
+          : data.error || 'Errore durante la chiusura finale delle votazioni.';
       });
 
       socket.on('state:init', (payload) => renderLive(payload));

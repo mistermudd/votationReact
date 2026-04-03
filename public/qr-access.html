@@ -34,6 +34,10 @@
         word-break: break-all;
       }
 
+      .download-row {
+        margin-top: 10px;
+      }
+
       @media (max-width: 820px) {
         .qr-grid {
           grid-template-columns: 1fr;
@@ -79,6 +83,9 @@
             <p id="regiaDescription">Accesso pagina regia.</p>
             <div id="regiaQr" class="qr-target">In attesa di generazione</div>
             <p class="url-row"><a id="regiaLink" href="#" target="_blank" rel="noopener"></a></p>
+            <div class="download-row">
+              <button id="downloadRegiaBtn" class="button button-secondary" type="button" disabled>Scarica QR</button>
+            </div>
           </article>
 
           <article class="qr-box">
@@ -86,6 +93,9 @@
             <p>Accesso pagina voto pubblico.</p>
             <div id="publicQr" class="qr-target">In attesa di generazione</div>
             <p class="url-row"><a id="publicLink" href="#" target="_blank" rel="noopener"></a></p>
+            <div class="download-row">
+              <button id="downloadPublicBtn" class="button button-secondary" type="button" disabled>Scarica QR</button>
+            </div>
           </article>
         </div>
       </section>
@@ -103,6 +113,8 @@
       const publicQr = document.getElementById('publicQr');
       const regiaLink = document.getElementById('regiaLink');
       const publicLink = document.getElementById('publicLink');
+      const downloadRegiaBtn = document.getElementById('downloadRegiaBtn');
+      const downloadPublicBtn = document.getElementById('downloadPublicBtn');
 
       const QR_LIB_URLS = [
         '/vendor/qrcode.min.js',
@@ -189,6 +201,36 @@
         targetNode.appendChild(canvas);
       }
 
+      function getQrDownloadUrl(targetNode) {
+        const canvas = targetNode.querySelector('canvas');
+        if (canvas) {
+          return canvas.toDataURL('image/png');
+        }
+
+        const image = targetNode.querySelector('img');
+        if (image) {
+          return image.src;
+        }
+
+        return null;
+      }
+
+      function downloadQrFromTarget(targetNode, filename) {
+        const imageUrl = getQrDownloadUrl(targetNode);
+        if (!imageUrl) {
+          errorText.textContent = 'Genera prima il QR code da scaricare.';
+          return;
+        }
+
+        const anchor = document.createElement('a');
+        anchor.href = imageUrl;
+        anchor.download = filename;
+        anchor.rel = 'noopener';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
       function getRegiaPath() {
         return regiaTarget.value === 'login' ? '/login.html' : '/director.html';
       }
@@ -220,6 +262,9 @@
 
         publicLink.href = pubblicoUrl;
         publicLink.textContent = pubblicoUrl;
+
+        downloadRegiaBtn.disabled = false;
+        downloadPublicBtn.disabled = false;
       }
 
       function resetAll() {
@@ -233,6 +278,8 @@
         publicLink.removeAttribute('href');
         regiaLink.textContent = '';
         publicLink.textContent = '';
+        downloadRegiaBtn.disabled = true;
+        downloadPublicBtn.disabled = true;
       }
 
       generateBtn.addEventListener('click', () => {
@@ -243,6 +290,8 @@
 
       regiaTarget.addEventListener('change', refreshRegiaDescription);
       resetBtn.addEventListener('click', resetAll);
+      downloadRegiaBtn.addEventListener('click', () => downloadQrFromTarget(regiaQr, 'qr-accesso-regia.png'));
+      downloadPublicBtn.addEventListener('click', () => downloadQrFromTarget(publicQr, 'qr-accesso-pubblico.png'));
       refreshRegiaDescription();
     </script>
   </body>

@@ -134,6 +134,8 @@ const ROLE_LABELS = {
   regia: 'Giudice'
 };
 
+let allVotesCompleted = false;
+
 function parseBasicAuth(req) {
   const auth = String(req.headers.authorization || '');
   if (!auth.startsWith('Basic ')) {
@@ -228,11 +230,21 @@ function denyAuth(res) {
   res.status(401).json({ error: 'Accesso non autorizzato' });
 }
 
+function denyAuthForRequest(req, res) {
+  if (req.path.startsWith('/api/')) {
+    denyAuth(res);
+    return;
+  }
+
+  const redirectTo = `/login.html?next=${encodeURIComponent(req.path)}`;
+  res.redirect(302, redirectTo);
+}
+
 function requireRoles(allowedRoles) {
   return (req, res, next) => {
     const role = getAccessRole(req);
     if (!role || !allowedRoles.includes(role)) {
-      denyAuth(res);
+      denyAuthForRequest(req, res);
       return;
     }
 
@@ -264,7 +276,7 @@ app.use((req, res, next) => {
 
   if (anyRolePages.has(req.path)) {
     if (!role) {
-      denyAuth(res);
+      denyAuthForRequest(req, res);
       return;
     }
     next();
@@ -273,7 +285,7 @@ app.use((req, res, next) => {
 
   if (gestionePages.has(req.path)) {
     if (role !== 'gestione' && role !== 'admin') {
-      denyAuth(res);
+      denyAuthForRequest(req, res);
       return;
     }
     next();
@@ -282,7 +294,7 @@ app.use((req, res, next) => {
 
   if (regiaPages.has(req.path)) {
     if (role !== 'regia' && role !== 'admin') {
-      denyAuth(res);
+      denyAuthForRequest(req, res);
       return;
     }
     next();
@@ -291,7 +303,7 @@ app.use((req, res, next) => {
 
   if (adminPages.has(req.path)) {
     if (role !== 'admin') {
-      denyAuth(res);
+      denyAuthForRequest(req, res);
       return;
     }
     next();
@@ -623,6 +635,7 @@ function buildStatePayload() {
       hasActivePerformance: false,
       isOpenForVoting: false,
       isPaused: false,
+      allVotesCompleted,
       nextLineup: next
         ? {
             lineupId: next.id,
@@ -648,6 +661,7 @@ function buildStatePayload() {
     hasActivePerformance: true,
     isOpenForVoting: Boolean(session.is_open),
     isPaused: !Boolean(session.is_open),
+    allVotesCompleted,
     nextLineup: next
       ? {
           lineupId: next.id,
@@ -836,6 +850,8 @@ function voteExists({ lineupId, role, voterName }) {
 }
 
 function startPerformanceByLineupId(lineupId) {
+  allVotesCompleted = false;
+
   const lineupRow = db
     .prepare(
       `
@@ -900,6 +916,47 @@ app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
     }
 
     return res.status(500).json({ error: 'Errore database in inserimento lineup' });
+  }
+});
+
+app.post('/api/lineup/autogenerate', requireRoles(['admin']), (_req, res) => {
+  const nextOrderRow = db
+    .prepare(
+      `
+      SELECT COALESCE(MAX(performance_order), 0) AS maxOrder
+      FROM lineup
+    `
+    )
+    .get();
+
+  const startOrder = Number(nextOrderRow.maxOrder || 0) + 1;
+
+  const insertMany = db.transaction((fromOrder) => {
+    const insert = db.prepare(
+      `
+      INSERT INTO lineup (artist_name, song_title, performance_order)
+      VALUES (?, ?, ?)
+    `
+    );
+
+    for (let index = 0; index < 10; index += 1) {
+      const order = fromOrder + index;
+      insert.run(`Artista Auto ${order}`, `Esibizione Auto ${order}`, order);
+    }
+  });
+
+  try {
+    insertMany(startOrder);
+    io.emit('lineup:updated', { lineup: getLineup() });
+    emitState();
+
+    return res.status(201).json({
+      message: 'Generate 10 esibizioni automatiche',
+      inserted: 10,
+      startOrder
+    });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Errore durante la generazione automatica lineup' });
   }
 });
 
@@ -1038,7 +1095,7 @@ app.post('/api/performance/start', requireRoles(['admin']), (req, res) => {
   return res.status(200).json({ message: 'Esibizione avviata', state: payload });
 });
 
-app.post('/api/performance/pause', requireRoles(['admin']), (_req, res) => {
+app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), (_req, res) => {
   const active = getActiveSession();
 
   if (!active) {
@@ -1055,7 +1112,8 @@ app.post('/api/performance/pause', requireRoles(['admin']), (_req, res) => {
   return res.status(200).json({ message: 'Votazione in pausa', state: payload });
 });
 
-app.post('/api/performance/resume', requireRoles(['admin']), (_req, res) => {
+app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), (_req, res) => {
+  allVotesCompleted = false;
   const active = getActiveSession();
 
   if (!active) {
@@ -1092,7 +1150,8 @@ app.post('/api/performance/terminate', requireRoles(['admin']), (_req, res) => {
   return res.status(200).json({ message: 'Esibizione terminata', state: payload });
 });
 
-app.post('/api/performance/next', requireRoles(['admin']), (_req, res) => {
+app.post('/api/performance/next', requireRoles(['gestione', 'admin']), (_req, res) => {
+  allVotesCompleted = false;
   const active = getActiveSession();
   const currentOrder = active ? active.performance_order : null;
 
@@ -1143,11 +1202,11 @@ app.get('/api/public/vote-status', (req, res) => {
   const active = getActiveSession();
   const voterId = String(req.query.deviceId || '').trim() || null;
 
-  if (!active) {
+  if (!active || allVotesCompleted) {
     return res.status(200).json({
       hasIdentifier: Boolean(voterId),
       hasVoted: false,
-      currentLineupId: null,
+      currentLineupId: active ? active.lineup_id : null,
       isOpenForVoting: false
     });
   }
@@ -1307,6 +1366,10 @@ app.post('/api/vote', (req, res) => {
   const score = Number(req.body.score);
   const accessRole = getAccessRole(req);
 
+  if (allVotesCompleted) {
+    return res.status(409).json({ error: 'Votazioni completate: non e piu possibile votare' });
+  }
+
   const active = getActiveSession();
   if (!active || !active.is_open) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva o votazione in pausa' });
@@ -1343,9 +1406,16 @@ app.post('/api/vote', (req, res) => {
 });
 
 app.post('/api/admin/clear-votes', requireRoles(['admin']), (_req, res) => {
+  allVotesCompleted = false;
   db.prepare('DELETE FROM votes').run();
   const payload = emitState('votes:cleared');
   return res.status(200).json({ message: 'Dati votazioni puliti', state: payload });
+});
+
+app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), (_req, res) => {
+  allVotesCompleted = true;
+  const payload = emitState('voting:completed');
+  return res.status(200).json({ message: 'Tutte le votazioni sono state effettuate', state: payload });
 });
 
 app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {

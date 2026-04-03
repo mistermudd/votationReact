@@ -38,6 +38,12 @@
         <button id="saveLineupBtn" class="button button-primary" style="margin-top: 12px;">
           Salva in lineup
         </button>
+
+        <div id="adminAutoGenerateWrap" style="margin-top: 12px; display: none;">
+          <button id="autoGenerateLineupBtn" class="button button-secondary" type="button">
+            Genera 10 esibizioni automatiche
+          </button>
+        </div>
         <p id="feedback"></p>
       </section>
 
@@ -52,6 +58,8 @@
       const socket = io();
       const lineupList = document.getElementById('lineupList');
       const feedback = document.getElementById('feedback');
+      const adminAutoGenerateWrap = document.getElementById('adminAutoGenerateWrap');
+      const autoGenerateLineupBtn = document.getElementById('autoGenerateLineupBtn');
 
       function escapeHtml(value) {
         return String(value)
@@ -90,6 +98,19 @@
         renderLineup(data);
       }
 
+      async function loadAuthRole() {
+        try {
+          const response = await fetch('/api/auth/me');
+          const data = await response.json();
+
+          if (response.ok && data && data.authenticated && data.role === 'admin') {
+            adminAutoGenerateWrap.style.display = 'block';
+          }
+        } catch (_error) {
+          adminAutoGenerateWrap.style.display = 'none';
+        }
+      }
+
       document.getElementById('saveLineupBtn').addEventListener('click', async () => {
         const artistName = document.getElementById('artistName').value.trim();
         const songTitle = document.getElementById('songTitle').value.trim();
@@ -117,6 +138,34 @@
         document.getElementById('artistName').value = '';
         document.getElementById('songTitle').value = '';
         document.getElementById('performanceOrder').value = '';
+      });
+
+      autoGenerateLineupBtn.addEventListener('click', async () => {
+        feedback.textContent = '';
+        const confirmed = window.confirm('Confermi la generazione automatica di 10 esibizioni?');
+        if (!confirmed) {
+          return;
+        }
+
+        autoGenerateLineupBtn.disabled = true;
+
+        try {
+          const response = await fetch('/api/lineup/autogenerate', {
+            method: 'POST'
+          });
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            feedback.textContent = data.error || 'Errore nella generazione automatica della lineup.';
+            return;
+          }
+
+          feedback.textContent = 'Generate 10 esibizioni automatiche in lineup.';
+        } catch (_error) {
+          feedback.textContent = 'Errore nella generazione automatica della lineup.';
+        } finally {
+          autoGenerateLineupBtn.disabled = false;
+        }
       });
 
       lineupList.addEventListener('click', async (event) => {
@@ -167,6 +216,7 @@
 
       socket.on('lineup:updated', (payload) => renderLineup(payload));
 
+      loadAuthRole();
       loadLineup();
     </script>
   </body>

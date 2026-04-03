@@ -14,13 +14,19 @@
 
     <div class="container fade-in">
       <section class="hero">
-        <h1><span class="page-icon">&#127942;</span> Pagina Giudice</h1>
+        <h1><span class="page-icon">&#127942;</span> Pagina Giudice <span id="judgeNameTitle" style="font-size: 0.8em; opacity: 0.85;"></span></h1>
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <div id="judgeNameBox" style="margin-top: 16px;">
-          <label for="judgeName" style="display: block; font-weight: 600; margin-bottom: 6px;">Nome giudice</label>
+          <label id="judgeNameLabel" for="judgeName" style="display: block; font-weight: 600; margin-bottom: 6px;">Nome giudice</label>
           <input id="judgeName" type="text" placeholder="Es: Giudice 1" style="max-width: 280px;" />
+          <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+            <button id="saveJudgeNameBtn" class="button button-secondary" type="button">Salva nome</button>
+            <button id="editJudgeNameBtn" class="button button-secondary" type="button" style="display: none;">Modifica nome</button>
+            <button id="confirmJudgeNameBtn" class="button button-primary" type="button" style="display: none;">Conferma modifica</button>
+          </div>
         </div>
       </section>
 
@@ -58,28 +64,66 @@
       const voteSection = document.getElementById('voteSection');
       const votedSection = document.getElementById('votedSection');
       const votedMessage = document.getElementById('votedMessage');
+      const judgeNameTitle = document.getElementById('judgeNameTitle');
+      const judgeNameLabel = document.getElementById('judgeNameLabel');
       const judgeNameInput = document.getElementById('judgeName');
+      const saveJudgeNameBtn = document.getElementById('saveJudgeNameBtn');
+      const editJudgeNameBtn = document.getElementById('editJudgeNameBtn');
+      const confirmJudgeNameBtn = document.getElementById('confirmJudgeNameBtn');
       const feedback = document.getElementById('feedback');
+      const allDoneMessage = document.getElementById('allDoneMessage');
       const runoffSection = document.getElementById('runoffSection');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffVotedBadge = document.getElementById('runoffVotedBadge');
       const runoffChoices = document.getElementById('runoffChoices');
       const runoffFeedback = document.getElementById('runoffFeedback');
+      const JUDGE_NAME_KEY = 'judge-saved-name';
       const JUDGE_VOTED_KEY = 'judge-voted-per-lineup';
       judgeNameInput.value = localStorage.getItem(JUDGE_NAME_KEY) || '';
-
-      const JUDGE_NAME_KEY = 'judge-saved-name';
       let selectedScore = null;
       let canVote = false;
       let currentLineupId = null;
+      let isEditingJudgeName = false;
       let runoffState = null;
       let latestState = {
         currentArtist: '',
         currentSong: '',
         currentLineupId: null,
         isOpenForVoting: false,
-        hasActivePerformance: false
+        hasActivePerformance: false,
+        allVotesCompleted: false
       };
+
+      function applyJudgeNameUiState() {
+        const savedName = String(localStorage.getItem(JUDGE_NAME_KEY) || '').trim();
+        const hasSavedName = Boolean(savedName);
+        const readonlyMode = hasSavedName && !isEditingJudgeName;
+
+        judgeNameTitle.textContent = hasSavedName ? `- ${savedName}` : '';
+        judgeNameLabel.style.display = readonlyMode ? 'none' : 'block';
+        judgeNameInput.style.display = readonlyMode ? 'none' : '';
+        judgeNameInput.disabled = readonlyMode;
+        saveJudgeNameBtn.style.display = hasSavedName ? 'none' : '';
+        editJudgeNameBtn.style.display = readonlyMode ? '' : 'none';
+        confirmJudgeNameBtn.style.display = isEditingJudgeName ? '' : 'none';
+      }
+
+      async function persistJudgeName() {
+        const value = judgeNameInput.value.trim();
+        if (!value) {
+          feedback.textContent = 'Inserisci il nome del giudice.';
+          return false;
+        }
+
+        localStorage.setItem(JUDGE_NAME_KEY, value);
+        judgeNameInput.value = value;
+        isEditingJudgeName = false;
+        applyJudgeNameUiState();
+        renderState(latestState);
+        await refreshRunoffSection();
+        feedback.textContent = 'Nome giudice salvato.';
+        return true;
+      }
 
       function escapeHtml(value) {
         return String(value)
@@ -143,13 +187,15 @@
           currentSong: payload.currentSong || '',
           currentLineupId: payload.currentLineupId || null,
           isOpenForVoting: Boolean(payload.isOpenForVoting),
-          hasActivePerformance: Boolean(payload.hasActivePerformance)
+          hasActivePerformance: Boolean(payload.hasActivePerformance),
+          allVotesCompleted: Boolean(payload.allVotesCompleted)
         };
 
         const artist = latestState.currentArtist;
         const open = latestState.isOpenForVoting;
         const song = latestState.currentSong;
         const hasActivePerformance = latestState.hasActivePerformance;
+        const allVotesCompleted = latestState.allVotesCompleted;
         currentLineupId = latestState.currentLineupId;
         const alreadyVoted = hasJudgeVoted(currentLineupId, judgeNameInput.value);
 
@@ -158,9 +204,10 @@
           : "In attesa dell'artista...";
         songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
 
-        canVote = open && Boolean(artist) && !alreadyVoted;
-        voteSection.style.display = (hasActivePerformance && !alreadyVoted) ? '' : 'none';
-        votedSection.style.display = (hasActivePerformance && alreadyVoted) ? '' : 'none';
+        canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;
+        voteSection.style.display = (hasActivePerformance && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
+        votedSection.style.display = (hasActivePerformance && alreadyVoted && !allVotesCompleted) ? '' : 'none';
+        allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
 
@@ -252,9 +299,43 @@
       });
 
       judgeNameInput.addEventListener('input', async () => {
-        localStorage.setItem(JUDGE_NAME_KEY, judgeNameInput.value.trim());
         renderState(latestState);
         await refreshRunoffSection();
+      });
+
+      saveJudgeNameBtn.addEventListener('click', async () => {
+        await persistJudgeName();
+      });
+
+      editJudgeNameBtn.addEventListener('click', () => {
+        isEditingJudgeName = true;
+        applyJudgeNameUiState();
+        judgeNameInput.focus();
+        judgeNameInput.select();
+      });
+
+      confirmJudgeNameBtn.addEventListener('click', async () => {
+        const confirmed = window.confirm('Confermi la modifica del nome giudice?');
+        if (!confirmed) {
+          return;
+        }
+
+        await persistJudgeName();
+      });
+
+      judgeNameInput.addEventListener('keydown', async (event) => {
+        if (event.key !== 'Enter') {
+          return;
+        }
+
+        if (isEditingJudgeName) {
+          event.preventDefault();
+          const confirmed = window.confirm('Confermi la modifica del nome giudice?');
+          if (!confirmed) {
+            return;
+          }
+          await persistJudgeName();
+        }
       });
 
       document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -344,6 +425,7 @@
         await loadRunoffState();
       });
 
+      applyJudgeNameUiState();
       loadRunoffState();
     </script>
   </body>

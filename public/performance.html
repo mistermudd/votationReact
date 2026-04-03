@@ -5,6 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Conduzione - Votazione Live</title>
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .control-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+
+      .control-actions .button {
+        min-width: 160px;
+        min-height: 64px;
+        display: inline-flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        line-height: 1.2;
+        text-align: center;
+      }
+
+      .control-actions .button .btn-icon {
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+      }
+    </style>
   </head>
   <body>
     <div class="top-right">
@@ -22,13 +46,31 @@
         <label for="lineupSelect">Seleziona artista dalla lineup</label>
         <select id="lineupSelect"></select>
 
-        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
-          <button id="startBtn" class="button button-primary">Inizia esibizione</button>
-          <button id="pauseBtn" class="button button-secondary">Pausa votazione</button>
-          <button id="resumeBtn" class="button button-secondary">Riprendi votazione</button>
-          <button id="terminateBtn" class="button button-danger">Termina esibizione</button>
-          <button id="nextBtn" class="button button-primary">Prossimo in ordine</button>
-          <button id="clearVotesBtn" class="button button-danger">Pulisci dati votazioni</button>
+        <div class="control-actions">
+          <button id="startBtn" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">▶</span>
+            <span>Inizia<br />esibizione</span>
+          </button>
+          <button id="pauseBtn" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏸</span>
+            <span>Pausa<br />votazione</span>
+          </button>
+          <button id="resumeBtn" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏯</span>
+            <span>Riprendi<br />votazione</span>
+          </button>
+          <button id="terminateBtn" class="button button-danger" type="button">
+            <span class="btn-icon" aria-hidden="true">⏹</span>
+            <span>Termina<br />esibizione</span>
+          </button>
+          <button id="nextBtn" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏭</span>
+            <span>Prossimo<br />in ordine</span>
+          </button>
+          <button id="clearVotesBtn" class="button button-danger" type="button">
+            <span class="btn-icon" aria-hidden="true">🗑</span>
+            <span>Pulisci dati<br />votazioni</span>
+          </button>
         </div>
         <p id="feedback"></p>
       </section>

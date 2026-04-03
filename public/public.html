@@ -13,6 +13,7 @@
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
       </section>
 
@@ -51,6 +52,7 @@
       const votedSection = document.getElementById('votedSection');
       const votedMessage = document.getElementById('votedMessage');
       const feedback = document.getElementById('feedback');
+      const allDoneMessage = document.getElementById('allDoneMessage');
       const runoffSection = document.getElementById('runoffSection');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffVotedBadge = document.getElementById('runoffVotedBadge');
@@ -65,6 +67,7 @@
       let currentArtist = '';
       let isOpenForVoting = false;
       let hasActivePerf = false;
+      let allVotesCompleted = false;
       let runoffState = null;
 
       function escapeHtml(value) {
@@ -92,7 +95,7 @@
       }
 
       async function refreshVoteAvailability() {
-        const baseCanVote = isOpenForVoting && Boolean(currentArtist);
+        const baseCanVote = !allVotesCompleted && isOpenForVoting && Boolean(currentArtist);
         let alreadyVoted = false;
 
         if (currentLineupId) {
@@ -108,9 +111,10 @@
         canVote = baseCanVote && !alreadyVoted;
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
+        allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
 
-        voteSection.style.display = (hasActivePerf && !alreadyVoted) ? '' : 'none';
-        votedSection.style.display = (hasActivePerf && alreadyVoted) ? '' : 'none';
+        voteSection.style.display = (hasActivePerf && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
+        votedSection.style.display = (hasActivePerf && alreadyVoted && !allVotesCompleted) ? '' : 'none';
       }
 
       for (let i = 1; i <= 10; i += 1) {
@@ -131,6 +135,7 @@
         const song = payload.currentSong || '';
         const open = Boolean(payload.isOpenForVoting);
         hasActivePerf = Boolean(payload.hasActivePerformance);
+        allVotesCompleted = Boolean(payload.allVotesCompleted);
         currentArtist = artist;
         isOpenForVoting = open;
         currentLineupId = payload.currentLineupId || null;
