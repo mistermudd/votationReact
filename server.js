@@ -1433,6 +1433,8 @@ app.post('/api/admin/import-lineup', requireRoles(['admin']), (req, res) => {
   }
 
   const importLineup = db.transaction(() => {
+    db.prepare('DELETE FROM votes').run();
+    db.prepare('DELETE FROM sessions').run();
     db.prepare('DELETE FROM lineup').run();
     const insert = db.prepare(
       `
@@ -1455,8 +1457,10 @@ app.post('/api/admin/import-lineup', requireRoles(['admin']), (req, res) => {
   try {
     importLineup();
     db.exec(`UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM lineup) WHERE name = 'lineup'`);
+    allVotesCompleted = false;
     io.emit('lineup:updated', { lineup: getLineup() });
-    return res.status(200).json({ message: 'Lineup importata con successo', count: data.length });
+    const payload = emitState('votes:cleared');
+    return res.status(200).json({ message: 'Lineup importata con successo (voti e sessioni ripuliti)', count: data.length, state: payload });
   } catch (_error) {
     return res.status(500).json({ error: 'Errore durante l\'importazione lineup' });
   }
