@@ -129,7 +129,8 @@
 
       async function renderQr(targetNode, value) {
         targetNode.innerHTML = '';
-        await QRCode.toCanvas(targetNode, value, {
+        const canvas = document.createElement('canvas');
+        await QRCode.toCanvas(canvas, value, {
           width: 220,
           margin: 2,
           color: {
@@ -137,6 +138,7 @@
             light: '#ffffff'
           }
         });
+        targetNode.appendChild(canvas);
       }
 
       function getRegiaPath() {
@@ -152,6 +154,11 @@
 
       async function generateQrs() {
         errorText.textContent = '';
+        if (typeof QRCode === 'undefined') {
+          errorText.textContent = 'Libreria QR non disponibile. Ricarica la pagina e riprova.';
+          return;
+        }
+
         const normalized = normalizeBaseUrl(baseUrlInput.value);
 
         if (!normalized) {
