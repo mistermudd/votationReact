@@ -4,7 +4,7 @@ services:
     env: node
     plan: starter
     region: frankfurt
-    buildCommand: npm ci
+    buildCommand: npm ci && npm install --no-save qrcode@1.5.4 && mkdir -p public/vendor && cp node_modules/qrcode/build/qrcode.min.js public/vendor/qrcode.min.js
     startCommand: npm start
     healthCheckPath: /healthz
     autoDeploy: true

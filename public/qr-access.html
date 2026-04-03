@@ -91,7 +91,6 @@
       </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script>
       const baseUrlInput = document.getElementById('baseUrl');
       const regiaTarget = document.getElementById('regiaTarget');
@@ -104,6 +103,42 @@
       const publicQr = document.getElementById('publicQr');
       const regiaLink = document.getElementById('regiaLink');
       const publicLink = document.getElementById('publicLink');
+
+      const QR_LIB_URLS = [
+        '/vendor/qrcode.min.js',
+        'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js',
+        'https://unpkg.com/qrcode@1.5.4/build/qrcode.min.js'
+      ];
+
+      function loadScript(url) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = url;
+          script.async = true;
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error(`Impossibile caricare ${url}`));
+          document.head.appendChild(script);
+        });
+      }
+
+      async function ensureQrLibrary() {
+        if (typeof QRCode !== 'undefined') {
+          return true;
+        }
+
+        for (const url of QR_LIB_URLS) {
+          try {
+            await loadScript(url);
+            if (typeof QRCode !== 'undefined') {
+              return true;
+            }
+          } catch (_error) {
+            // Continue with next CDN URL
+          }
+        }
+
+        return false;
+      }
 
       function normalizeBaseUrl(value) {
         const raw = String(value || '').trim();
@@ -129,6 +164,19 @@
 
       async function renderQr(targetNode, value) {
         targetNode.innerHTML = '';
+        const hasLib = await ensureQrLibrary();
+
+        if (!hasLib) {
+          // Fallback without QR library: render QR via external image endpoint.
+          const image = document.createElement('img');
+          image.width = 220;
+          image.height = 220;
+          image.alt = `QR code ${value}`;
+          image.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(value)}`;
+          targetNode.appendChild(image);
+          return;
+        }
+
         const canvas = document.createElement('canvas');
         await QRCode.toCanvas(canvas, value, {
           width: 220,
@@ -154,11 +202,6 @@
 
       async function generateQrs() {
         errorText.textContent = '';
-        if (typeof QRCode === 'undefined') {
-          errorText.textContent = 'Libreria QR non disponibile. Ricarica la pagina e riprova.';
-          return;
-        }
-
         const normalized = normalizeBaseUrl(baseUrlInput.value);
 
         if (!normalized) {
