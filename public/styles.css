@@ -241,6 +241,32 @@ select {
   font-weight: 700;
 }
 
+.legal-signature {
+  width: min(920px, 92vw);
+  margin: 20px auto 28px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #d8d3c8;
+  background: rgba(255, 252, 245, 0.88);
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.legal-signature p {
+  margin: 4px 0;
+}
+
+.legal-signature a {
+  color: var(--accent-2);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.legal-signature a:hover {
+  text-decoration: underline;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -310,6 +336,11 @@ select {
 
   .container {
     width: 94vw;
+  }
+
+  .legal-signature {
+    width: 94vw;
+    margin-bottom: 22px;
   }
 
   .score-buttons {

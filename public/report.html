@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Resoconto - Votazione Live</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   </head>
   <body>
     <div class="top-right">
@@ -44,6 +45,9 @@
 
         <div style="margin-top: 16px;">
           <h3>Classifica Ponderata</h3>
+          <button id="downloadWeightedPdf" class="button button-primary" type="button" style="margin-bottom: 10px;">
+            Scarica PDF classifica ponderata
+          </button>
           <div id="weightedRanking"></div>
         </div>
       </section>
@@ -69,8 +73,10 @@
       const judgeRankingEl = document.getElementById('judgeRanking');
       const publicRankingEl = document.getElementById('publicRanking');
       const weightedRankingEl = document.getElementById('weightedRanking');
+      const downloadWeightedPdfEl = document.getElementById('downloadWeightedPdf');
       const summaryEl = document.getElementById('summary');
       const votesEl = document.getElementById('votes');
+      let lastReportData = null;
 
       function escapeHtml(value) {
         return String(value)
@@ -135,6 +141,7 @@
       }
 
       function renderReport(data) {
+        lastReportData = data;
         generatedAtEl.textContent = `Aggiornato: ${new Date(data.generatedAt).toLocaleString('it-IT')}`;
         weightInfoEl.textContent = `Pesi applicati: giudici ${formatScore(
           data.rankings?.weights?.judge
@@ -169,6 +176,77 @@
         }
       }
 
+      function exportWeightedRankingPdf() {
+        const weightedRows = lastReportData?.rankings?.weighted || [];
+        if (!weightedRows.length) {
+          alert('Nessun dato disponibile per esportare il PDF.');
+          return;
+        }
+
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          alert('Libreria PDF non disponibile. Riprova tra pochi secondi.');
+          return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const margin = 40;
+        const lineHeight = 18;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let y = margin;
+
+        const generatedAtText = new Date(lastReportData.generatedAt).toLocaleString('it-IT');
+        const judgeWeight = formatScore(lastReportData?.rankings?.weights?.judge);
+        const publicWeight = formatScore(lastReportData?.rankings?.weights?.public);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('Classifica Ponderata - Resoconto Votazione', margin, y);
+        y += 22;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.text(`Generato: ${generatedAtText}`, margin, y);
+        y += lineHeight;
+        doc.text(`Pesi: Giudici ${judgeWeight}% | Pubblico ${publicWeight}%`, margin, y);
+        y += 24;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('#', margin, y);
+        doc.text('Artista', margin + 30, y);
+        doc.text('Punteggio', pageWidth - 120, y);
+        y += 10;
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 16;
+
+        doc.setFont('helvetica', 'normal');
+        weightedRows.forEach((row) => {
+          if (y > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+          const artistLabel = `${row.artistName}${row.songTitle ? ` - ${row.songTitle}` : ''}`;
+          const safeArtist = artistLabel.replace(/[\r\n]+/g, ' ');
+          const detail = `G ${formatScore(row.judgeAverage)} | P ${formatScore(row.publicAverage)}`;
+
+          doc.text(String(row.rank), margin, y);
+          doc.text(safeArtist.slice(0, 52), margin + 30, y);
+          doc.text(formatScore(row.score), pageWidth - 120, y);
+          y += 14;
+          doc.setTextColor(90);
+          doc.setFontSize(9);
+          doc.text(detail, margin + 30, y);
+          doc.setTextColor(0);
+          doc.setFontSize(11);
+          y += 12;
+        });
+
+        const fileDate = new Date().toISOString().slice(0, 10);
+        doc.save(`classifica-ponderata-${fileDate}.pdf`);
+      }
+
       async function loadReport() {
         const params = new URLSearchParams({
           judgeWeight: judgeWeightEl.value || '0',
@@ -185,8 +263,15 @@
       socket.on('voting:closed', loadReport);
       judgeWeightEl.addEventListener('input', loadReport);
       publicWeightEl.addEventListener('input', loadReport);
+      downloadWeightedPdfEl.addEventListener('click', exportWeightedRankingPdf);
 
       loadReport();
     </script>
+    <footer class="legal-signature">
+      <p>Codice creato da Maikol Mudoni</p>
+      <p>Uso commerciale non consentito</p>
+      <p>Contatti: <a href="mailto:mistermudd92@gmail.com">mistermudd92@gmail.com</a></p>
+      <p>Vuoi realizzare qualcosa di simile? Scrivimi via email per una collaborazione.</p>
+    </footer>
   </body>
 </html>
