@@ -1,69 +1,59 @@
-const path = require('path');
-const fs = require('fs');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 
-const configuredPath = String(process.env.DB_PATH || '').trim();
-const dbPath = configuredPath ? path.resolve(configuredPath) : path.join(__dirname, 'votation.db');
-const dbDir = path.dirname(dbPath);
-fs.mkdirSync(dbDir, { recursive: true });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_lUAapFW7crz9@ep-patient-waterfall-ab83mkzo.eu-west-2.aws.neon.tech/neondb?sslmode=require',
+  ssl: { rejectUnauthorized: false }
+});
 
-const db = new Database(dbPath);
-
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-db.exec(`
+pool.query(`
   CREATE TABLE IF NOT EXISTS lineup (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     artist_name TEXT NOT NULL,
     song_title TEXT,
     performance_order INTEGER NOT NULL UNIQUE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lineup_id INTEGER NOT NULL,
-    is_open INTEGER NOT NULL DEFAULT 1,
-    started_at TEXT NOT NULL DEFAULT (datetime('now')),
-    ended_at TEXT,
-    FOREIGN KEY (lineup_id) REFERENCES lineup(id)
+    id SERIAL PRIMARY KEY,
+    lineup_id INTEGER NOT NULL REFERENCES lineup(id),
+    is_open BOOLEAN NOT NULL DEFAULT TRUE,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ
   );
 
   CREATE TABLE IF NOT EXISTS votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lineup_id INTEGER NOT NULL,
+    id SERIAL PRIMARY KEY,
+    lineup_id INTEGER NOT NULL REFERENCES lineup(id),
     role TEXT NOT NULL CHECK(role IN ('judge', 'public')),
     voter_name TEXT NOT NULL,
     score INTEGER NOT NULL CHECK(score >= 1 AND score <= 10),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT,
-    UNIQUE(lineup_id, role, voter_name),
-    FOREIGN KEY (lineup_id) REFERENCES lineup(id)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    UNIQUE(lineup_id, role, voter_name)
   );
 
   CREATE TABLE IF NOT EXISTS runoff_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_lineup_id INTEGER NOT NULL,
-    second_lineup_id INTEGER NOT NULL,
-    is_open INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    closed_at TEXT,
-    FOREIGN KEY (first_lineup_id) REFERENCES lineup(id),
-    FOREIGN KEY (second_lineup_id) REFERENCES lineup(id)
+    id SERIAL PRIMARY KEY,
+    first_lineup_id INTEGER NOT NULL REFERENCES lineup(id),
+    second_lineup_id INTEGER NOT NULL REFERENCES lineup(id),
+    is_open BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    closed_at TIMESTAMPTZ
   );
 
   CREATE TABLE IF NOT EXISTS runoff_votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    runoff_session_id INTEGER NOT NULL,
+    id SERIAL PRIMARY KEY,
+    runoff_session_id INTEGER NOT NULL REFERENCES runoff_sessions(id),
     role TEXT NOT NULL CHECK(role IN ('judge', 'public')),
     voter_name TEXT NOT NULL,
-    selected_lineup_id INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(runoff_session_id, role, voter_name),
-    FOREIGN KEY (runoff_session_id) REFERENCES runoff_sessions(id),
-    FOREIGN KEY (selected_lineup_id) REFERENCES lineup(id)
+    selected_lineup_id INTEGER NOT NULL REFERENCES lineup(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(runoff_session_id, role, voter_name)
   );
-`);
+`).catch((err) => {
+  console.error('Errore inizializzazione DB:', err.message);
+  process.exit(1);
+});
 
-module.exports = db;
+module.exports = pool;

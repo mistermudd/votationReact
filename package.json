@@ -8,13 +8,18 @@
     "dev": "node --watch server.js",
     "test": "echo \"No tests configured\""
   },
-  "keywords": ["voting", "live-event", "socketio", "sqlite"],
+  "keywords": [
+    "voting",
+    "live-event",
+    "socketio",
+    "sqlite"
+  ],
   "author": "mistermudd",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "better-sqlite3": "^12.8.0",
     "express": "^5.2.1",
+    "pg": "^8.20.0",
     "socket.io": "^4.8.3"
   }
 }

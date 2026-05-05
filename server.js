@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
-const db = require('./db');
+const pool = require('./db');
 
 const GITHUB_BACKUP_TOKEN = process.env.GITHUB_BACKUP_TOKEN || '';
 const GITHUB_BACKUP_GIST_ID = process.env.GITHUB_BACKUP_GIST_ID || '';
@@ -13,13 +13,20 @@ const BACKUP_INTERVAL_MS = 10 * 60 * 1000; // ogni 10 minuti
 async function backupToGist() {
   if (!GITHUB_BACKUP_TOKEN || !GITHUB_BACKUP_GIST_ID) return false;
   try {
+    const [lineup, sessions, votes, runoff_sessions, runoff_votes] = await Promise.all([
+      pool.query('SELECT * FROM lineup'),
+      pool.query('SELECT * FROM sessions'),
+      pool.query('SELECT * FROM votes'),
+      pool.query('SELECT * FROM runoff_sessions'),
+      pool.query('SELECT * FROM runoff_votes')
+    ]);
     const data = {
       backed_up_at: new Date().toISOString(),
-      lineup: db.prepare('SELECT * FROM lineup').all(),
-      sessions: db.prepare('SELECT * FROM sessions').all(),
-      votes: db.prepare('SELECT * FROM votes').all(),
-      runoff_sessions: db.prepare('SELECT * FROM runoff_sessions').all(),
-      runoff_votes: db.prepare('SELECT * FROM runoff_votes').all()
+      lineup: lineup.rows,
+      sessions: sessions.rows,
+      votes: votes.rows,
+      runoff_sessions: runoff_sessions.rows,
+      runoff_votes: runoff_votes.rows
     };
     const response = await fetch(`https://api.github.com/gists/${GITHUB_BACKUP_GIST_ID}`, {
       method: 'PATCH',
@@ -46,8 +53,8 @@ async function backupToGist() {
 
 async function restoreFromGist() {
   if (!GITHUB_BACKUP_TOKEN || !GITHUB_BACKUP_GIST_ID) return;
-  const count = db.prepare('SELECT COUNT(*) AS cnt FROM lineup').get();
-  if (count.cnt > 0) {
+  const count = (await pool.query('SELECT COUNT(*) AS cnt FROM lineup')).rows[0];
+  if (Number(count.cnt) > 0) {
     console.log('[backup] DB non vuoto, ripristino saltato.');
     return;
   }
@@ -69,42 +76,52 @@ async function restoreFromGist() {
       return;
     }
     const data = JSON.parse(file.content);
-    const restore = db.transaction(() => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
       for (const r of data.lineup || []) {
-        db.prepare(
-          'INSERT OR IGNORE INTO lineup (id, artist_name, song_title, performance_order, created_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(r.id, r.artist_name, r.song_title, r.performance_order, r.created_at);
+        await client.query(
+          'INSERT INTO lineup (id, artist_name, song_title, performance_order, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+          [r.id, r.artist_name, r.song_title, r.performance_order, r.created_at]
+        );
       }
       for (const r of data.sessions || []) {
-        db.prepare(
-          'INSERT OR IGNORE INTO sessions (id, lineup_id, is_open, started_at, ended_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(r.id, r.lineup_id, r.is_open, r.started_at, r.ended_at);
+        await client.query(
+          'INSERT INTO sessions (id, lineup_id, is_open, started_at, ended_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+          [r.id, r.lineup_id, r.is_open, r.started_at, r.ended_at]
+        );
       }
       for (const r of data.votes || []) {
-        db.prepare(
-          'INSERT OR IGNORE INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).run(r.id, r.lineup_id, r.role, r.voter_name, r.score, r.created_at, r.updated_at);
+        await client.query(
+          'INSERT INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
+          [r.id, r.lineup_id, r.role, r.voter_name, r.score, r.created_at, r.updated_at]
+        );
       }
       for (const r of data.runoff_sessions || []) {
-        db.prepare(
-          'INSERT OR IGNORE INTO runoff_sessions (id, first_lineup_id, second_lineup_id, is_open, created_at, closed_at) VALUES (?, ?, ?, ?, ?, ?)'
-        ).run(r.id, r.first_lineup_id, r.second_lineup_id, r.is_open, r.created_at, r.closed_at);
+        await client.query(
+          'INSERT INTO runoff_sessions (id, first_lineup_id, second_lineup_id, is_open, created_at, closed_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
+          [r.id, r.first_lineup_id, r.second_lineup_id, r.is_open, r.created_at, r.closed_at]
+        );
       }
       for (const r of data.runoff_votes || []) {
-        db.prepare(
-          'INSERT OR IGNORE INTO runoff_votes (id, runoff_session_id, role, voter_name, selected_lineup_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-        ).run(r.id, r.runoff_session_id, r.role, r.voter_name, r.selected_lineup_id, r.created_at);
+        await client.query(
+          'INSERT INTO runoff_votes (id, runoff_session_id, role, voter_name, selected_lineup_id, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
+          [r.id, r.runoff_session_id, r.role, r.voter_name, r.selected_lineup_id, r.created_at]
+        );
       }
-    });
-    restore();
-    // Reset SQLite autoincrement sequences after bulk insert
-    db.exec(`
-      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM lineup) WHERE name = 'lineup';
-      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM sessions) WHERE name = 'sessions';
-      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM votes) WHERE name = 'votes';
-      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM runoff_sessions) WHERE name = 'runoff_sessions';
-      UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM runoff_votes) WHERE name = 'runoff_votes';
-    `);
+      // Reset sequences after bulk insert
+      for (const tbl of ['lineup', 'sessions', 'votes', 'runoff_sessions', 'runoff_votes']) {
+        await client.query(
+          `SELECT setval(pg_get_serial_sequence('${tbl}', 'id'), COALESCE((SELECT MAX(id) FROM ${tbl}), 1))`
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
     console.log('[backup] Ripristino da Gist completato. Backed up at:', data.backed_up_at || 'N/A');
   } catch (err) {
     console.error('[backup] Errore ripristino Gist:', err.message);
@@ -376,11 +393,9 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-function getActiveSession() {
-  return db
-    .prepare(
-      `
-      SELECT
+async function getActiveSession() {
+  const result = await pool.query(
+    `SELECT
         s.id AS session_id,
         s.lineup_id,
         s.is_open,
@@ -393,29 +408,23 @@ function getActiveSession() {
       JOIN lineup l ON l.id = s.lineup_id
       WHERE s.ended_at IS NULL
       ORDER BY s.id DESC
-      LIMIT 1
-    `
-    )
-    .get();
+      LIMIT 1`
+  );
+  return result.rows[0] || null;
 }
 
-function getLineup() {
-  return db
-    .prepare(
-      `
-      SELECT id, artist_name, song_title, performance_order, created_at
+async function getLineup() {
+  const result = await pool.query(
+    `SELECT id, artist_name, song_title, performance_order, created_at
       FROM lineup
-      ORDER BY performance_order ASC
-    `
-    )
-    .all();
+      ORDER BY performance_order ASC`
+  );
+  return result.rows;
 }
 
-function getActiveRunoffSession() {
-  return db
-    .prepare(
-      `
-      SELECT
+async function getActiveRunoffSession() {
+  const result = await pool.query(
+    `SELECT
         rs.id,
         rs.first_lineup_id,
         rs.second_lineup_id,
@@ -431,26 +440,23 @@ function getActiveRunoffSession() {
       JOIN lineup b ON b.id = rs.second_lineup_id
       WHERE rs.closed_at IS NULL
       ORDER BY rs.id DESC
-      LIMIT 1
-    `
-    )
-    .get();
+      LIMIT 1`
+  );
+  return result.rows[0] || null;
 }
 
-function getRunoffVoteCounts(sessionId) {
-  const rows = db
-    .prepare(
-      `
-      SELECT
+async function getRunoffVoteCounts(sessionId) {
+  const result = await pool.query(
+    `SELECT
         selected_lineup_id,
         role,
         COUNT(*) AS total
       FROM runoff_votes
-      WHERE runoff_session_id = ?
-      GROUP BY selected_lineup_id, role
-    `
-    )
-    .all(sessionId);
+      WHERE runoff_session_id = $1
+      GROUP BY selected_lineup_id, role`,
+    [sessionId]
+  );
+  const rows = result.rows;
 
   const counts = {};
   rows.forEach((row) => {
@@ -470,8 +476,8 @@ function getRunoffVoteCounts(sessionId) {
   return counts;
 }
 
-function buildRunoffState() {
-  const session = getActiveRunoffSession();
+async function buildRunoffState() {
+  const session = await getActiveRunoffSession();
 
   if (!session) {
     return {
@@ -484,7 +490,7 @@ function buildRunoffState() {
     };
   }
 
-  const counts = getRunoffVoteCounts(session.id);
+  const counts = await getRunoffVoteCounts(session.id);
   const artists = [
     {
       lineupId: session.first_lineup_id,
@@ -517,8 +523,8 @@ function buildRunoffState() {
   };
 }
 
-function emitRunoffState(eventName) {
-  const payload = buildRunoffState();
+async function emitRunoffState(eventName) {
+  const payload = await buildRunoffState();
   io.emit('runoff:state', payload);
   if (eventName) {
     io.emit(eventName, payload);
@@ -526,80 +532,61 @@ function emitRunoffState(eventName) {
   return payload;
 }
 
-function closeActiveRunoffSession() {
-  db.prepare(
-    `
-    UPDATE runoff_sessions
-    SET is_open = 0,
-        closed_at = datetime('now')
-    WHERE closed_at IS NULL
-  `
-  ).run();
+async function closeActiveRunoffSession() {
+  await pool.query(
+    `UPDATE runoff_sessions SET is_open = FALSE, closed_at = NOW() WHERE closed_at IS NULL`
+  );
 }
 
-function runoffVoteExists({ sessionId, role, voterName }) {
-  const existing = db
-    .prepare(
-      `
-      SELECT id
-      FROM runoff_votes
-      WHERE runoff_session_id = ? AND role = ? AND lower(voter_name) = lower(?)
-      LIMIT 1
-    `
-    )
-    .get(sessionId, role, voterName);
-
-  return Boolean(existing);
+async function runoffVoteExists({ sessionId, role, voterName }) {
+  const result = await pool.query(
+    `SELECT id FROM runoff_votes
+      WHERE runoff_session_id = $1 AND role = $2 AND LOWER(voter_name) = LOWER($3)
+      LIMIT 1`,
+    [sessionId, role, voterName]
+  );
+  return result.rows.length > 0;
 }
 
-function getNextLineupRow(currentOrder) {
+async function getNextLineupRow(currentOrder) {
   if (currentOrder == null) {
-    return db
-      .prepare(
-        `
-        SELECT id, artist_name, song_title, performance_order
+    const result = await pool.query(
+      `SELECT id, artist_name, song_title, performance_order
         FROM lineup
         ORDER BY performance_order ASC
-        LIMIT 1
-      `
-      )
-      .get();
+        LIMIT 1`
+    );
+    return result.rows[0] || null;
   }
 
-  return db
-    .prepare(
-      `
-      SELECT id, artist_name, song_title, performance_order
+  const result = await pool.query(
+    `SELECT id, artist_name, song_title, performance_order
       FROM lineup
-      WHERE performance_order > ?
+      WHERE performance_order > $1
       ORDER BY performance_order ASC
-      LIMIT 1
-    `
-    )
-    .get(currentOrder);
+      LIMIT 1`,
+    [currentOrder]
+  );
+  return result.rows[0] || null;
 }
 
-function statsByLineupId(lineupId) {
-  const byRole = db
-    .prepare(
-      `
-      SELECT role, COUNT(*) AS count, ROUND(AVG(score), 2) AS average
+async function statsByLineupId(lineupId) {
+  const byRoleResult = await pool.query(
+    `SELECT role, COUNT(*) AS count, ROUND(AVG(score)::numeric, 2) AS average
       FROM votes
-      WHERE lineup_id = ?
-      GROUP BY role
-    `
-    )
-    .all(lineupId);
+      WHERE lineup_id = $1
+      GROUP BY role`,
+    [lineupId]
+  );
+  const byRole = byRoleResult.rows;
 
-  const totals = db
-    .prepare(
-      `
-      SELECT COUNT(*) AS count, ROUND(AVG(score), 2) AS average
+  const totalsResult = await pool.query(
+    `SELECT COUNT(*) AS count, ROUND(AVG(score)::numeric, 2) AS average
       FROM votes
-      WHERE lineup_id = ?
-    `
-    )
-    .get(lineupId);
+      WHERE lineup_id = $1`,
+    [lineupId]
+  );
+  const totals = totalsResult.rows[0];
 
   const roleStats = {
     judge: { count: 0, average: 0 },
@@ -622,11 +609,11 @@ function statsByLineupId(lineupId) {
   };
 }
 
-function buildStatePayload() {
-  const session = getActiveSession();
+async function buildStatePayload() {
+  const session = await getActiveSession();
 
   if (!session) {
-    const next = getNextLineupRow(null);
+    const next = await getNextLineupRow(null);
     return {
       currentArtist: '',
       currentSong: '',
@@ -651,7 +638,7 @@ function buildStatePayload() {
     };
   }
 
-  const next = getNextLineupRow(session.performance_order);
+  const next = await getNextLineupRow(session.performance_order);
 
   return {
     currentArtist: session.artist_name,
@@ -670,7 +657,7 @@ function buildStatePayload() {
           performanceOrder: next.performance_order
         }
       : null,
-    stats: statsByLineupId(session.lineup_id)
+    stats: await statsByLineupId(session.lineup_id)
   };
 }
 
@@ -783,8 +770,8 @@ function buildRankings(summary, judgeWeight, publicWeight) {
   };
 }
 
-function emitState(eventName) {
-  const payload = buildStatePayload();
+async function emitState(eventName) {
+  const payload = await buildStatePayload();
   io.emit('state:updated', payload);
   if (eventName) {
     io.emit(eventName, payload);
@@ -792,96 +779,68 @@ function emitState(eventName) {
   return payload;
 }
 
-function closeAnyActiveSession() {
-  db.prepare(
-    `
-      UPDATE sessions
-      SET is_open = 0,
-          ended_at = datetime('now')
-      WHERE ended_at IS NULL
-    `
-  ).run();
+async function closeAnyActiveSession() {
+  await pool.query(
+    `UPDATE sessions SET is_open = FALSE, ended_at = NOW() WHERE ended_at IS NULL`
+  );
 }
 
-function upsertVote({ lineupId, role, voterName, score }) {
-  const existing = db
-    .prepare(
-      `
-      SELECT id
-      FROM votes
-      WHERE lineup_id = ? AND role = ? AND lower(voter_name) = lower(?)
-    `
-    )
-    .get(lineupId, role, voterName);
+async function upsertVote({ lineupId, role, voterName, score }) {
+  const existing = await pool.query(
+    `SELECT id FROM votes WHERE lineup_id = $1 AND role = $2 AND LOWER(voter_name) = LOWER($3)`,
+    [lineupId, role, voterName]
+  );
 
-  if (existing) {
-    db.prepare(
-      `
-      UPDATE votes
-      SET score = ?,
-          updated_at = datetime('now')
-      WHERE id = ?
-    `
-    ).run(score, existing.id);
+  if (existing.rows.length > 0) {
+    await pool.query(
+      `UPDATE votes SET score = $1, updated_at = NOW() WHERE id = $2`,
+      [score, existing.rows[0].id]
+    );
     return;
   }
 
-  db.prepare(
-    `
-    INSERT INTO votes (lineup_id, role, voter_name, score)
-    VALUES (?, ?, ?, ?)
-  `
-  ).run(lineupId, role, voterName, score);
+  await pool.query(
+    `INSERT INTO votes (lineup_id, role, voter_name, score) VALUES ($1, $2, $3, $4)`,
+    [lineupId, role, voterName, score]
+  );
 }
 
-function voteExists({ lineupId, role, voterName }) {
-  const existing = db
-    .prepare(
-      `
-      SELECT id
-      FROM votes
-      WHERE lineup_id = ? AND role = ? AND lower(voter_name) = lower(?)
-      LIMIT 1
-    `
-    )
-    .get(lineupId, role, voterName);
-
-  return Boolean(existing);
+async function voteExists({ lineupId, role, voterName }) {
+  const result = await pool.query(
+    `SELECT id FROM votes WHERE lineup_id = $1 AND role = $2 AND LOWER(voter_name) = LOWER($3) LIMIT 1`,
+    [lineupId, role, voterName]
+  );
+  return result.rows.length > 0;
 }
 
-function startPerformanceByLineupId(lineupId) {
+async function startPerformanceByLineupId(lineupId) {
   allVotesCompleted = false;
 
-  const lineupRow = db
-    .prepare(
-      `
-      SELECT id, artist_name, song_title, performance_order
-      FROM lineup
-      WHERE id = ?
-      LIMIT 1
-    `
-    )
-    .get(lineupId);
+  const lineupResult = await pool.query(
+    `SELECT id, artist_name, song_title, performance_order FROM lineup WHERE id = $1 LIMIT 1`,
+    [lineupId]
+  );
+  const lineupRow = lineupResult.rows[0];
 
   if (!lineupRow) {
     return null;
   }
 
-  closeAnyActiveSession();
-  db.prepare('INSERT INTO sessions (lineup_id, is_open) VALUES (?, 1)').run(lineupId);
+  await closeAnyActiveSession();
+  await pool.query('INSERT INTO sessions (lineup_id, is_open) VALUES ($1, TRUE)', [lineupId]);
 
   return emitState('artist:changed');
 }
 
-app.get('/api/state', (_req, res) => {
-  res.json(buildStatePayload());
+app.get('/api/state', async (_req, res) => {
+  res.json(await buildStatePayload());
 });
 
-app.get('/api/lineup', requireRoles(['gestione', 'admin']), (_req, res) => {
-  res.json({ lineup: getLineup() });
+app.get('/api/lineup', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  res.json({ lineup: await getLineup() });
 });
 
-app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/lineup', requireRoles(['gestione', 'admin']), async (req, res) => {
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
   const performanceOrder = Number(req.body.performanceOrder);
@@ -895,23 +854,19 @@ app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 
   try {
-    const result = db
-      .prepare(
-        `
-        INSERT INTO lineup (artist_name, song_title, performance_order)
-        VALUES (?, ?, ?)
-      `
-      )
-      .run(artistName, songTitle, performanceOrder);
+    const result = await pool.query(
+      `INSERT INTO lineup (artist_name, song_title, performance_order) VALUES ($1, $2, $3) RETURNING id`,
+      [artistName, songTitle, performanceOrder]
+    );
 
-    io.emit('lineup:updated', { lineup: getLineup() });
+    io.emit('lineup:updated', { lineup: await getLineup() });
 
     return res.status(201).json({
       message: 'Artista aggiunto in lineup',
-      id: result.lastInsertRowid
+      id: result.rows[0].id
     });
   } catch (error) {
-    if (String(error.message).includes('UNIQUE')) {
+    if (error.code === '23505') {
       return res.status(409).json({ error: 'Ordine gia occupato' });
     }
 
@@ -919,36 +874,33 @@ app.post('/api/lineup', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 });
 
-app.post('/api/lineup/autogenerate', requireRoles(['admin']), (_req, res) => {
-  const nextOrderRow = db
-    .prepare(
-      `
-      SELECT COALESCE(MAX(performance_order), 0) AS maxOrder
-      FROM lineup
-    `
-    )
-    .get();
+app.post('/api/lineup/autogenerate', requireRoles(['admin']), async (_req, res) => {
+  const nextOrderResult = await pool.query(
+    `SELECT COALESCE(MAX(performance_order), 0) AS "maxOrder" FROM lineup`
+  );
+  const startOrder = Number(nextOrderResult.rows[0].maxOrder || 0) + 1;
 
-  const startOrder = Number(nextOrderRow.maxOrder || 0) + 1;
-
-  const insertMany = db.transaction((fromOrder) => {
-    const insert = db.prepare(
-      `
-      INSERT INTO lineup (artist_name, song_title, performance_order)
-      VALUES (?, ?, ?)
-    `
-    );
-
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
     for (let index = 0; index < 10; index += 1) {
-      const order = fromOrder + index;
-      insert.run(`Artista Auto ${order}`, `Esibizione Auto ${order}`, order);
+      const order = startOrder + index;
+      await client.query(
+        `INSERT INTO lineup (artist_name, song_title, performance_order) VALUES ($1, $2, $3)`,
+        [`Artista Auto ${order}`, `Esibizione Auto ${order}`, order]
+      );
     }
-  });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    client.release();
+    return res.status(500).json({ error: 'Errore durante la generazione automatica lineup' });
+  }
+  client.release();
 
   try {
-    insertMany(startOrder);
-    io.emit('lineup:updated', { lineup: getLineup() });
-    emitState();
+    io.emit('lineup:updated', { lineup: await getLineup() });
+    await emitState();
 
     return res.status(201).json({
       message: 'Generate 10 esibizioni automatiche',
@@ -960,7 +912,7 @@ app.post('/api/lineup/autogenerate', requireRoles(['admin']), (_req, res) => {
   }
 });
 
-app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
+app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), async (req, res) => {
   const lineupId = Number(req.params.id);
   const artistName = String(req.body.artistName || '').trim();
   const songTitle = String(req.body.songTitle || '').trim();
@@ -979,28 +931,21 @@ app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 
   try {
-    const result = db
-      .prepare(
-        `
-        UPDATE lineup
-        SET artist_name = ?,
-            song_title = ?,
-            performance_order = ?
-        WHERE id = ?
-      `
-      )
-      .run(artistName, songTitle, performanceOrder, lineupId);
+    const result = await pool.query(
+      `UPDATE lineup SET artist_name = $1, song_title = $2, performance_order = $3 WHERE id = $4`,
+      [artistName, songTitle, performanceOrder, lineupId]
+    );
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Elemento lineup non trovato' });
     }
 
-    io.emit('lineup:updated', { lineup: getLineup() });
-    emitState();
+    io.emit('lineup:updated', { lineup: await getLineup() });
+    await emitState();
 
     return res.status(200).json({ message: 'Elemento lineup aggiornato' });
   } catch (error) {
-    if (String(error.message).includes('UNIQUE')) {
+    if (error.code === '23505') {
       return res.status(409).json({ error: 'Ordine gia occupato' });
     }
 
@@ -1008,27 +953,27 @@ app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
   }
 });
 
-app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) => {
+app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), async (req, res) => {
   const lineupId = Number(req.params.id);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const active = getActiveSession();
+  const active = await getActiveSession();
   if (active && active.lineup_id === lineupId) {
     return res.status(409).json({ error: 'Impossibile eliminare artista in esibizione attiva' });
   }
 
   try {
-    const result = db.prepare('DELETE FROM lineup WHERE id = ?').run(lineupId);
+    const result = await pool.query('DELETE FROM lineup WHERE id = $1', [lineupId]);
 
-    if (result.changes === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Elemento lineup non trovato' });
     }
 
-    io.emit('lineup:updated', { lineup: getLineup() });
-    emitState();
+    io.emit('lineup:updated', { lineup: await getLineup() });
+    await emitState();
 
     return res.status(200).json({ message: 'Elemento lineup eliminato' });
   } catch (_error) {
@@ -1038,41 +983,35 @@ app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), (req, res) =>
   }
 });
 
-app.post('/api/artist', requireRoles(['admin']), (req, res) => {
+app.post('/api/artist', requireRoles(['admin']), async (req, res) => {
   const artistName = String(req.body.artistName || '').trim();
 
   if (!artistName) {
     return res.status(400).json({ error: 'artistName obbligatorio' });
   }
 
-  const lineupRow = db
-    .prepare(
-      `
-      SELECT id
-      FROM lineup
-      WHERE lower(artist_name) = lower(?)
-      ORDER BY performance_order ASC
-      LIMIT 1
-    `
-    )
-    .get(artistName);
+  const lineupResult = await pool.query(
+    `SELECT id FROM lineup WHERE LOWER(artist_name) = LOWER($1) ORDER BY performance_order ASC LIMIT 1`,
+    [artistName]
+  );
+  const lineupRow = lineupResult.rows[0];
 
   if (!lineupRow) {
     return res.status(404).json({ error: 'Artista non presente in lineup' });
   }
 
-  const payload = startPerformanceByLineupId(lineupRow.id);
+  const payload = await startPerformanceByLineupId(lineupRow.id);
   return res.status(200).json({ message: 'Esibizione avviata', state: payload });
 });
 
-app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), async (req, res) => {
   const lineupId = Number(req.body.lineupId);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const payload = startPerformanceByLineupId(lineupId);
+  const payload = await startPerformanceByLineupId(lineupId);
   if (!payload) {
     return res.status(404).json({ error: 'lineupId non trovato' });
   }
@@ -1080,14 +1019,14 @@ app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), (req, res)
   return res.status(200).json({ message: 'Esibizione attivata', state: payload });
 });
 
-app.post('/api/performance/start', requireRoles(['admin']), (req, res) => {
+app.post('/api/performance/start', requireRoles(['admin']), async (req, res) => {
   const lineupId = Number(req.body.lineupId);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const payload = startPerformanceByLineupId(lineupId);
+  const payload = await startPerformanceByLineupId(lineupId);
   if (!payload) {
     return res.status(404).json({ error: 'lineupId non trovato' });
   }
@@ -1095,8 +1034,8 @@ app.post('/api/performance/start', requireRoles(['admin']), (req, res) => {
   return res.status(200).json({ message: 'Esibizione avviata', state: payload });
 });
 
-app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), (_req, res) => {
-  const active = getActiveSession();
+app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  const active = await getActiveSession();
 
   if (!active) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva' });
@@ -1106,15 +1045,15 @@ app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), (_req, r
     return res.status(400).json({ error: 'Votazione gia in pausa' });
   }
 
-  db.prepare('UPDATE sessions SET is_open = 0 WHERE id = ?').run(active.session_id);
-  const payload = emitState('voting:paused');
+  await pool.query('UPDATE sessions SET is_open = FALSE WHERE id = $1', [active.session_id]);
+  const payload = await emitState('voting:paused');
 
   return res.status(200).json({ message: 'Votazione in pausa', state: payload });
 });
 
-app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), async (_req, res) => {
   allVotesCompleted = false;
-  const active = getActiveSession();
+  const active = await getActiveSession();
 
   if (!active) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva' });
@@ -1124,82 +1063,70 @@ app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), (_req, 
     return res.status(400).json({ error: 'Votazione gia aperta' });
   }
 
-  db.prepare('UPDATE sessions SET is_open = 1 WHERE id = ?').run(active.session_id);
-  const payload = emitState('voting:resumed');
+  await pool.query('UPDATE sessions SET is_open = TRUE WHERE id = $1', [active.session_id]);
+  const payload = await emitState('voting:resumed');
 
   return res.status(200).json({ message: 'Votazione riaperta', state: payload });
 });
 
-app.post('/api/performance/terminate', requireRoles(['admin']), (_req, res) => {
-  const active = getActiveSession();
+app.post('/api/performance/terminate', requireRoles(['admin']), async (_req, res) => {
+  const active = await getActiveSession();
 
   if (!active) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva' });
   }
 
-  db.prepare(
-    `
-    UPDATE sessions
-    SET is_open = 0,
-        ended_at = datetime('now')
-    WHERE id = ?
-  `
-  ).run(active.session_id);
+  await pool.query(
+    `UPDATE sessions SET is_open = FALSE, ended_at = NOW() WHERE id = $1`,
+    [active.session_id]
+  );
 
-  const payload = emitState('performance:terminated');
+  const payload = await emitState('performance:terminated');
   return res.status(200).json({ message: 'Esibizione terminata', state: payload });
 });
 
-app.post('/api/performance/next', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/performance/next', requireRoles(['gestione', 'admin']), async (_req, res) => {
   allVotesCompleted = false;
-  const active = getActiveSession();
+  const active = await getActiveSession();
   const currentOrder = active ? active.performance_order : null;
 
   if (active) {
-    db.prepare(
-      `
-      UPDATE sessions
-      SET is_open = 0,
-          ended_at = datetime('now')
-      WHERE id = ?
-    `
-    ).run(active.session_id);
+    await pool.query(
+      `UPDATE sessions SET is_open = FALSE, ended_at = NOW() WHERE id = $1`,
+      [active.session_id]
+    );
   }
 
-  const next = getNextLineupRow(currentOrder);
+  const next = await getNextLineupRow(currentOrder);
   if (!next) {
-    const payload = emitState('lineup:finished');
+    const payload = await emitState('lineup:finished');
     return res.status(404).json({ error: 'Nessun prossimo artista disponibile', state: payload });
   }
 
-  db.prepare('INSERT INTO sessions (lineup_id, is_open) VALUES (?, 1)').run(next.id);
+  await pool.query('INSERT INTO sessions (lineup_id, is_open) VALUES ($1, TRUE)', [next.id]);
 
-  const payload = emitState('artist:changed');
+  const payload = await emitState('artist:changed');
   return res.status(200).json({ message: 'Passato al prossimo artista', state: payload });
 });
 
-app.post('/api/close-voting', requireRoles(['gestione', 'admin']), (_req, res) => {
-  const active = getActiveSession();
+app.post('/api/close-voting', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  const active = await getActiveSession();
 
   if (!active) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva' });
   }
 
-  db.prepare(
-    `
-    UPDATE sessions
-    SET is_open = 0,
-        ended_at = datetime('now')
-    WHERE id = ?
-  `
-  ).run(active.session_id);
+  await pool.query(
+    `UPDATE sessions SET is_open = FALSE, ended_at = NOW() WHERE id = $1`,
+    [active.session_id]
+  );
 
-  const payload = emitState('voting:closed');
+  const payload = await emitState('voting:closed');
   return res.status(200).json({ message: 'Votazione chiusa', state: payload });
 });
 
-app.get('/api/public/vote-status', (req, res) => {
-  const active = getActiveSession();
+app.get('/api/public/vote-status', async (req, res) => {
+  const active = await getActiveSession();
   const voterId = String(req.query.deviceId || '').trim() || null;
 
   if (!active || allVotesCompleted) {
@@ -1212,7 +1139,7 @@ app.get('/api/public/vote-status', (req, res) => {
   }
 
   const hasVoted = voterId
-    ? voteExists({ lineupId: active.lineup_id, role: 'public', voterName: voterId })
+    ? await voteExists({ lineupId: active.lineup_id, role: 'public', voterName: voterId })
     : false;
 
   return res.status(200).json({
@@ -1223,12 +1150,12 @@ app.get('/api/public/vote-status', (req, res) => {
   });
 });
 
-app.get('/api/runoff/state', (_req, res) => {
-  res.status(200).json(buildRunoffState());
+app.get('/api/runoff/state', async (_req, res) => {
+  res.status(200).json(await buildRunoffState());
 });
 
-app.get('/api/runoff/vote-status', (req, res) => {
-  const session = getActiveRunoffSession();
+app.get('/api/runoff/vote-status', async (req, res) => {
+  const session = await getActiveRunoffSession();
   const role = String(req.query.role || '').trim();
   const voterName = String(req.query.voterName || '').trim();
   const accessRole = getAccessRole(req);
@@ -1246,7 +1173,7 @@ app.get('/api/runoff/vote-status', (req, res) => {
   }
 
   const hasVoted = voterName
-    ? runoffVoteExists({ sessionId: session.id, role, voterName })
+    ? await runoffVoteExists({ sessionId: session.id, role, voterName })
     : false;
 
   return res.status(200).json({
@@ -1257,7 +1184,7 @@ app.get('/api/runoff/vote-status', (req, res) => {
   });
 });
 
-app.post('/api/runoff/start', requireRoles(['gestione', 'admin']), (req, res) => {
+app.post('/api/runoff/start', requireRoles(['gestione', 'admin']), async (req, res) => {
   const firstLineupId = Number(req.body.firstLineupId);
   const secondLineupId = Number(req.body.secondLineupId);
 
@@ -1269,53 +1196,42 @@ app.post('/api/runoff/start', requireRoles(['gestione', 'admin']), (req, res) =>
     return res.status(400).json({ error: 'Gli artisti devono essere diversi' });
   }
 
-  const lineupRows = db
-    .prepare(
-      `
-      SELECT id
-      FROM lineup
-      WHERE id IN (?, ?)
-    `
-    )
-    .all(firstLineupId, secondLineupId);
+  const lineupResult = await pool.query(
+    `SELECT id FROM lineup WHERE id IN ($1, $2)`,
+    [firstLineupId, secondLineupId]
+  );
 
-  if (lineupRows.length !== 2) {
+  if (lineupResult.rows.length !== 2) {
     return res.status(404).json({ error: 'Artista non trovato in lineup' });
   }
 
-  closeActiveRunoffSession();
-  db.prepare(
-    `
-    INSERT INTO runoff_sessions (first_lineup_id, second_lineup_id, is_open)
-    VALUES (?, ?, 1)
-  `
-  ).run(firstLineupId, secondLineupId);
+  await closeActiveRunoffSession();
+  await pool.query(
+    `INSERT INTO runoff_sessions (first_lineup_id, second_lineup_id, is_open) VALUES ($1, $2, TRUE)`,
+    [firstLineupId, secondLineupId]
+  );
 
-  const state = emitRunoffState('runoff:started');
+  const state = await emitRunoffState('runoff:started');
   return res.status(200).json({ message: 'Ballottaggio avviato', state });
 });
 
-app.post('/api/runoff/close', requireRoles(['gestione', 'admin']), (_req, res) => {
-  const session = getActiveRunoffSession();
+app.post('/api/runoff/close', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  const session = await getActiveRunoffSession();
   if (!session) {
     return res.status(400).json({ error: 'Nessun ballottaggio attivo' });
   }
 
-  db.prepare(
-    `
-    UPDATE runoff_sessions
-    SET is_open = 0,
-        closed_at = datetime('now')
-    WHERE id = ?
-  `
-  ).run(session.id);
+  await pool.query(
+    `UPDATE runoff_sessions SET is_open = FALSE, closed_at = NOW() WHERE id = $1`,
+    [session.id]
+  );
 
-  const state = emitRunoffState('runoff:closed');
+  const state = await emitRunoffState('runoff:closed');
   return res.status(200).json({ message: 'Ballottaggio chiuso', state });
 });
 
-app.post('/api/runoff/vote', (req, res) => {
-  const session = getActiveRunoffSession();
+app.post('/api/runoff/vote', async (req, res) => {
+  const session = await getActiveRunoffSession();
   const role = String(req.body.role || '').trim();
   const voterName = String(req.body.voterName || '').trim();
   const selectedLineupId = Number(req.body.selectedLineupId);
@@ -1345,22 +1261,20 @@ app.post('/api/runoff/vote', (req, res) => {
     return res.status(400).json({ error: 'Artista non valido per questo ballottaggio' });
   }
 
-  if (runoffVoteExists({ sessionId: session.id, role, voterName })) {
+  if (await runoffVoteExists({ sessionId: session.id, role, voterName })) {
     return res.status(409).json({ error: 'Hai gia votato in questo ballottaggio' });
   }
 
-  db.prepare(
-    `
-    INSERT INTO runoff_votes (runoff_session_id, role, voter_name, selected_lineup_id)
-    VALUES (?, ?, ?, ?)
-  `
-  ).run(session.id, role, voterName, selectedLineupId);
+  await pool.query(
+    `INSERT INTO runoff_votes (runoff_session_id, role, voter_name, selected_lineup_id) VALUES ($1, $2, $3, $4)`,
+    [session.id, role, voterName, selectedLineupId]
+  );
 
-  const state = emitRunoffState('runoff:vote-updated');
+  const state = await emitRunoffState('runoff:vote-updated');
   return res.status(200).json({ message: 'Voto ballottaggio registrato', state });
 });
 
-app.post('/api/vote', (req, res) => {
+app.post('/api/vote', async (req, res) => {
   const role = String(req.body.role || '').trim();
   let voterName = String(req.body.voterName || req.body.judgeName || '').trim();
   const score = Number(req.body.score);
@@ -1370,7 +1284,7 @@ app.post('/api/vote', (req, res) => {
     return res.status(409).json({ error: 'Votazioni completate: non e piu possibile votare' });
   }
 
-  const active = getActiveSession();
+  const active = await getActiveSession();
   if (!active || !active.is_open) {
     return res.status(400).json({ error: 'Nessuna esibizione attiva o votazione in pausa' });
   }
@@ -1395,142 +1309,120 @@ app.post('/api/vote', (req, res) => {
     return res.status(400).json({ error: 'Il punteggio deve essere tra 1 e 10' });
   }
 
-  if (voteExists({ lineupId: active.lineup_id, role, voterName })) {
+  if (await voteExists({ lineupId: active.lineup_id, role, voterName })) {
     return res.status(409).json({ error: 'Hai gia inviato il voto per questa esibizione' });
   }
 
-  upsertVote({ lineupId: active.lineup_id, role, voterName, score });
+  await upsertVote({ lineupId: active.lineup_id, role, voterName, score });
 
-  const payload = emitState('vote:updated');
+  const payload = await emitState('vote:updated');
   return res.status(200).json({ message: 'Voto registrato', state: payload });
 });
 
-app.post('/api/admin/clear-votes', requireRoles(['admin']), (_req, res) => {
+app.post('/api/admin/clear-votes', requireRoles(['admin']), async (_req, res) => {
   allVotesCompleted = false;
-  db.prepare('DELETE FROM votes').run();
-  const payload = emitState('votes:cleared');
+  await pool.query('DELETE FROM votes');
+  const payload = await emitState('votes:cleared');
   return res.status(200).json({ message: 'Dati votazioni puliti', state: payload });
 });
 
-app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), (_req, res) => {
+app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), async (_req, res) => {
   allVotesCompleted = true;
-  const payload = emitState('voting:completed');
+  const payload = await emitState('voting:completed');
   return res.status(200).json({ message: 'Tutte le votazioni sono state effettuate', state: payload });
 });
 
-app.get('/api/admin/export-lineup', requireRoles(['admin']), (_req, res) => {
-  const lineup = getLineup();
+app.get('/api/admin/export-lineup', requireRoles(['admin']), async (_req, res) => {
+  const lineup = await getLineup();
   const filename = `lineup-${new Date().toISOString().split('T')[0]}.json`;
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'application/json');
   res.json(lineup);
 });
 
-app.post('/api/admin/import-lineup', requireRoles(['admin']), (req, res) => {
+app.post('/api/admin/import-lineup', requireRoles(['admin']), async (req, res) => {
   const data = req.body;
   if (!Array.isArray(data)) {
     return res.status(400).json({ error: 'Array di lineup atteso' });
   }
 
-  const importLineup = db.transaction(() => {
-    db.prepare('DELETE FROM votes').run();
-    db.prepare('DELETE FROM sessions').run();
-    db.prepare('DELETE FROM lineup').run();
-    const insert = db.prepare(
-      `
-      INSERT INTO lineup (id, artist_name, song_title, performance_order, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `
-    );
-
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM votes');
+    await client.query('DELETE FROM sessions');
+    await client.query('DELETE FROM lineup');
     for (const item of data) {
-      insert.run(
-        item.id,
-        item.artist_name,
-        item.song_title || null,
-        item.performance_order,
-        item.created_at || new Date().toISOString()
+      await client.query(
+        `INSERT INTO lineup (id, artist_name, song_title, performance_order, created_at) VALUES ($1, $2, $3, $4, $5)`,
+        [item.id, item.artist_name, item.song_title || null, item.performance_order, item.created_at || new Date().toISOString()]
       );
     }
-  });
-
-  try {
-    importLineup();
-    db.exec(`UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM lineup) WHERE name = 'lineup'`);
-    allVotesCompleted = false;
-    io.emit('lineup:updated', { lineup: getLineup() });
-    const payload = emitState('votes:cleared');
-    return res.status(200).json({ message: 'Lineup importata con successo (voti e sessioni ripuliti)', count: data.length, state: payload });
+    await client.query(`SELECT setval(pg_get_serial_sequence('lineup', 'id'), COALESCE((SELECT MAX(id) FROM lineup), 1))`);
+    await client.query('COMMIT');
   } catch (_error) {
+    await client.query('ROLLBACK');
+    client.release();
     return res.status(500).json({ error: 'Errore durante l\'importazione lineup' });
   }
+  client.release();
+
+  allVotesCompleted = false;
+  io.emit('lineup:updated', { lineup: await getLineup() });
+  const payload = await emitState('votes:cleared');
+  return res.status(200).json({ message: 'Lineup importata con successo (voti e sessioni ripuliti)', count: data.length, state: payload });
 });
 
-app.get('/api/admin/export-votes', requireRoles(['admin']), (_req, res) => {
-  const votes = db
-    .prepare(
-      `
-      SELECT id, lineup_id, role, voter_name, score, created_at, updated_at
+app.get('/api/admin/export-votes', requireRoles(['admin']), async (_req, res) => {
+  const result = await pool.query(
+    `SELECT id, lineup_id, role, voter_name, score, created_at, updated_at
       FROM votes
-      ORDER BY lineup_id ASC, role ASC, voter_name ASC
-    `
-    )
-    .all();
+      ORDER BY lineup_id ASC, role ASC, voter_name ASC`
+  );
 
   const filename = `votes-${new Date().toISOString().split('T')[0]}.json`;
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'application/json');
-  res.json(votes);
+  res.json(result.rows);
 });
 
-app.post('/api/admin/import-votes', requireRoles(['admin']), (req, res) => {
+app.post('/api/admin/import-votes', requireRoles(['admin']), async (req, res) => {
   const data = req.body;
   if (!Array.isArray(data)) {
     return res.status(400).json({ error: 'Array di voti atteso' });
   }
 
-  const importVotes = db.transaction(() => {
-    db.prepare('DELETE FROM votes').run();
-    const insert = db.prepare(
-      `
-      INSERT INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `
-    );
-
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM votes');
     for (const item of data) {
-      insert.run(
-        item.id,
-        item.lineup_id,
-        item.role,
-        item.voter_name,
-        item.score,
-        item.created_at || new Date().toISOString(),
-        item.updated_at || null
+      await client.query(
+        `INSERT INTO votes (id, lineup_id, role, voter_name, score, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [item.id, item.lineup_id, item.role, item.voter_name, item.score, item.created_at || new Date().toISOString(), item.updated_at || null]
       );
     }
-  });
-
-  try {
-    importVotes();
-    db.exec(`UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM votes) WHERE name = 'votes'`);
-    allVotesCompleted = false;
-    const payload = emitState('votes:updated');
-    return res.status(200).json({ message: 'Voti importati con successo', count: data.length, state: payload });
+    await client.query(`SELECT setval(pg_get_serial_sequence('votes', 'id'), COALESCE((SELECT MAX(id) FROM votes), 1))`);
+    await client.query('COMMIT');
   } catch (_error) {
+    await client.query('ROLLBACK');
+    client.release();
     return res.status(500).json({ error: 'Errore durante l\'importazione voti' });
   }
+  client.release();
+
+  allVotesCompleted = false;
+  const payload = await emitState('votes:updated');
+  return res.status(200).json({ message: 'Voti importati con successo', count: data.length, state: payload });
 });
 
-app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
-  const lineup = getLineup();
+app.get('/api/report', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  const lineup = await getLineup();
   const judgeWeight = Number(_req.query.judgeWeight);
   const publicWeight = Number(_req.query.publicWeight);
 
-  const votes = db
-    .prepare(
-      `
-      SELECT
+  const votesResult = await pool.query(
+    `SELECT
         v.id,
         v.lineup_id,
         l.artist_name,
@@ -1543,13 +1435,12 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
         v.updated_at
       FROM votes v
       JOIN lineup l ON l.id = v.lineup_id
-      ORDER BY l.performance_order ASC, v.role ASC, v.voter_name ASC
-    `
-    )
-    .all();
+      ORDER BY l.performance_order ASC, v.role ASC, v.voter_name ASC`
+  );
+  const votes = votesResult.rows;
 
-  const summary = lineup.map((item) => {
-    const stats = statsByLineupId(item.id);
+  const summary = await Promise.all(lineup.map(async (item) => {
+    const stats = await statsByLineupId(item.id);
     return {
       lineupId: item.id,
       artistName: item.artist_name,
@@ -1562,13 +1453,13 @@ app.get('/api/report', requireRoles(['gestione', 'admin']), (_req, res) => {
       publicVotes: stats.byRole.public.count,
       publicAverage: stats.byRole.public.average
     };
-  });
+  }));
 
   const rankings = buildRankings(summary, judgeWeight, publicWeight);
 
   res.json({
     generatedAt: new Date().toISOString(),
-    currentState: buildStatePayload(),
+    currentState: await buildStatePayload(),
     lineup,
     summary,
     rankings,
@@ -1592,32 +1483,46 @@ app.post('/api/admin/backup-now', async (req, res) => {
   return res.status(500).json({ error: 'Backup fallito. Controlla i log.' });
 });
 
-// Admin: download a copy of the SQLite DB (safety net before a deploy)
-app.get('/api/admin/db-backup', (req, res) => {
+// Admin: download a JSON backup of the database (Neon Tech/PostgreSQL)
+app.get('/api/admin/db-backup', async (req, res) => {
   const role = getAccessRole(req);
   if (role !== 'admin') {
     return res.status(403).json({ error: 'Accesso negato.' });
   }
 
-  const configuredPath = String(process.env.DB_PATH || '').trim();
-  const dbPath = configuredPath
-    ? require('path').resolve(configuredPath)
-    : require('path').join(__dirname, 'votation.db');
-
-  if (!fs.existsSync(dbPath)) {
-    return res.status(404).json({ error: 'File DB non trovato.' });
+  try {
+    const [lineup, sessions, votes, runoff_sessions, runoff_votes] = await Promise.all([
+      pool.query('SELECT * FROM lineup'),
+      pool.query('SELECT * FROM sessions'),
+      pool.query('SELECT * FROM votes'),
+      pool.query('SELECT * FROM runoff_sessions'),
+      pool.query('SELECT * FROM runoff_votes')
+    ]);
+    const data = {
+      backed_up_at: new Date().toISOString(),
+      lineup: lineup.rows,
+      sessions: sessions.rows,
+      votes: votes.rows,
+      runoff_sessions: runoff_sessions.rows,
+      runoff_votes: runoff_votes.rows
+    };
+    const filename = `votation-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(data);
+  } catch (err) {
+    return res.status(500).json({ error: 'Errore durante il backup.' });
   }
-
-  const filename = `votation-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.db`;
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.sendFile(dbPath);
 });
 
 io.on('connection', (socket) => {
-  socket.emit('state:init', buildStatePayload());
-  socket.emit('runoff:state', buildRunoffState());
-  socket.emit('lineup:updated', { lineup: getLineup() });
+  Promise.all([buildStatePayload(), buildRunoffState(), getLineup()])
+    .then(([state, runoffState, lineup]) => {
+      socket.emit('state:init', state);
+      socket.emit('runoff:state', runoffState);
+      socket.emit('lineup:updated', { lineup });
+    })
+    .catch((err) => console.error('[socket] Errore inizializzazione:', err.message));
   socket.on('role:selected', () => {});
 });
 
@@ -1628,7 +1533,7 @@ const httpServer_instance = httpServer.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown: on SIGTERM (used by Render during redeploy)
-// close HTTP server first (stop accepting new connections), then close DB
+// close HTTP server first (stop accepting new connections), then close DB pool
 process.on('SIGTERM', () => {
   console.log('SIGTERM ricevuto: backup + spegnimento graceful in corso...');
   backupToGist()
@@ -1636,11 +1541,7 @@ process.on('SIGTERM', () => {
     .finally(() => {
       httpServer_instance.close(() => {
         console.log('Server HTTP chiuso.');
-        try {
-          db.close();
-        } catch (_err) {
-          // already closed
-        }
+        pool.end().catch(() => {});
         process.exit(0);
       });
       // Force exit after 10 seconds if close takes too long
