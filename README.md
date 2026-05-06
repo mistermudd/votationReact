@@ -108,13 +108,7 @@ Crea un file `.env` nella root del progetto (non committarlo mai):
 ```env
 # Credenziali ruoli (default se non specificati)
 ADMIN_USER=admin
-ADMIN_PIN=1234
-
-GESTIONE_USER=regia
-GESTIONE_PIN=5678
-
-REGIA_USER=giudice
-REGIA_PIN=2468
+ADMIN_PIN=votactionAdmin
 
 # Percorso database SQLite
 # Default: ./votation.db nella root del progetto
@@ -204,7 +198,7 @@ Tutte le API protette utilizzano il cookie di sessione `auth_token` oppure HTTP 
 
 | Metodo | Path | Descrizione |
 |---|---|---|
-| `POST` | `/api/auth/login` | Login `{username, pin}` |
+| `POST` | `/api/auth/login` | Login `{username, password}` |
 | `POST` | `/api/auth/logout` | Logout |
 | `GET` | `/api/auth/me` | Ruolo corrente |
 
@@ -224,10 +218,6 @@ Il file `render.yaml` è già configurato.
 ```
 ADMIN_USER        = <scegli>
 ADMIN_PIN         = <scegli>
-GESTIONE_USER     = <scegli>
-GESTIONE_PIN      = <scegli>
-REGIA_USER        = <scegli>
-REGIA_PIN         = <scegli>
 GITHUB_BACKUP_TOKEN   = <vedi sezione backup>
 GITHUB_BACKUP_GIST_ID = <vedi sezione backup>
 ```

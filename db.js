@@ -51,6 +51,17 @@ pool.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(runoff_session_id, role, voter_name)
   );
+
+  CREATE TABLE IF NOT EXISTS app_users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('gestione', 'regia')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ
+  );
 `).catch((err) => {
   console.error('Errore inizializzazione DB:', err.message);
   process.exit(1);

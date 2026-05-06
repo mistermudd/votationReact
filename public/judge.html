@@ -20,10 +20,10 @@
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
         <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <div id="judgeNameBox" style="margin-top: 16px;">
-          <label id="judgeNameLabel" for="judgeName" style="display: block; font-weight: 600; margin-bottom: 6px;">Nome giudice</label>
-          <input id="judgeName" type="text" placeholder="Es: Giudice 1" style="max-width: 280px;" />
+          <label id="judgeNameLabel" for="judgeName" style="display: block; font-weight: 600; margin-bottom: 6px;">Giudice autenticato</label>
+          <input id="judgeName" type="text" placeholder="Profilo giudice" style="max-width: 280px;" readonly />
           <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-            <button id="saveJudgeNameBtn" class="button button-secondary" type="button">Salva nome</button>
+            <button id="saveJudgeNameBtn" class="button button-secondary" type="button" style="display: none;">Salva nome</button>
             <button id="editJudgeNameBtn" class="button button-secondary" type="button" style="display: none;">Modifica nome</button>
             <button id="confirmJudgeNameBtn" class="button button-primary" type="button" style="display: none;">Conferma modifica</button>
           </div>
@@ -77,14 +77,12 @@
       const runoffVotedBadge = document.getElementById('runoffVotedBadge');
       const runoffChoices = document.getElementById('runoffChoices');
       const runoffFeedback = document.getElementById('runoffFeedback');
-      const JUDGE_NAME_KEY = 'judge-saved-name';
-      const JUDGE_VOTED_KEY = 'judge-voted-per-lineup';
-      judgeNameInput.value = localStorage.getItem(JUDGE_NAME_KEY) || '';
       let selectedScore = null;
       let canVote = false;
       let currentLineupId = null;
-      let isEditingJudgeName = false;
       let runoffState = null;
+      let currentJudgeName = '';
+      let hasAlreadyVotedCurrentPerformance = false;
       let latestState = {
         currentArtist: '',
         currentSong: '',
@@ -94,35 +92,20 @@
         allVotesCompleted: false
       };
 
-      function applyJudgeNameUiState() {
-        const savedName = String(localStorage.getItem(JUDGE_NAME_KEY) || '').trim();
-        const hasSavedName = Boolean(savedName);
-        const readonlyMode = hasSavedName && !isEditingJudgeName;
-
-        judgeNameTitle.textContent = hasSavedName ? `- ${savedName}` : '';
-        judgeNameLabel.style.display = readonlyMode ? 'none' : 'block';
-        judgeNameInput.style.display = readonlyMode ? 'none' : '';
-        judgeNameInput.disabled = readonlyMode;
-        saveJudgeNameBtn.style.display = hasSavedName ? 'none' : '';
-        editJudgeNameBtn.style.display = readonlyMode ? '' : 'none';
-        confirmJudgeNameBtn.style.display = isEditingJudgeName ? '' : 'none';
+      function getJudgeName() {
+        return String(currentJudgeName || '').trim();
       }
 
-      async function persistJudgeName() {
-        const value = judgeNameInput.value.trim();
-        if (!value) {
-          feedback.textContent = 'Inserisci il nome del giudice.';
-          return false;
-        }
-
-        localStorage.setItem(JUDGE_NAME_KEY, value);
-        judgeNameInput.value = value;
-        isEditingJudgeName = false;
-        applyJudgeNameUiState();
-        renderState(latestState);
-        await refreshRunoffSection();
-        feedback.textContent = 'Nome giudice salvato.';
-        return true;
+      function applyJudgeNameUiState() {
+        const name = getJudgeName();
+        judgeNameInput.value = name;
+        judgeNameTitle.textContent = name ? `- ${name}` : '';
+        judgeNameLabel.style.display = 'block';
+        judgeNameInput.style.display = '';
+        judgeNameInput.disabled = true;
+        saveJudgeNameBtn.style.display = 'none';
+        editJudgeNameBtn.style.display = 'none';
+        confirmJudgeNameBtn.style.display = 'none';
       }
 
       function escapeHtml(value) {
@@ -134,32 +117,22 @@
           .replaceAll("'", '&#39;');
       }
 
-      function getJudgeVoteMap() {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(JUDGE_VOTED_KEY) || '{}');
-          return parsed && typeof parsed === 'object' ? parsed : {};
-        } catch (_error) {
-          return {};
+      async function refreshJudgeVoteStatus() {
+        const response = await fetch('/api/judge/vote-status');
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          hasAlreadyVotedCurrentPerformance = false;
+          return;
         }
-      }
 
-      function judgeVoteKey(lineupId, judgeName) {
-        return `${lineupId || 'none'}::${String(judgeName || '').trim().toLowerCase()}`;
-      }
-
-      function markJudgeVoted(lineupId, judgeName) {
-        const map = getJudgeVoteMap();
-        map[judgeVoteKey(lineupId, judgeName)] = true;
-        localStorage.setItem(JUDGE_VOTED_KEY, JSON.stringify(map));
-      }
-
-      function hasJudgeVoted(lineupId, judgeName) {
-        const name = String(judgeName || '').trim();
-        if (!lineupId || !name) {
-          return false;
+        if (data.judgeName) {
+          currentJudgeName = String(data.judgeName);
+          applyJudgeNameUiState();
         }
-        const map = getJudgeVoteMap();
-        return Boolean(map[judgeVoteKey(lineupId, name)]);
+
+        const samePerformance = Number(data.currentLineupId || 0) === Number(currentLineupId || 0);
+        hasAlreadyVotedCurrentPerformance = samePerformance && Boolean(data.hasVoted);
       }
 
       function animateSuccess(node) {
@@ -197,7 +170,7 @@
         const hasActivePerformance = latestState.hasActivePerformance;
         const allVotesCompleted = latestState.allVotesCompleted;
         currentLineupId = latestState.currentLineupId;
-        const alreadyVoted = hasJudgeVoted(currentLineupId, judgeNameInput.value);
+        const alreadyVoted = hasAlreadyVotedCurrentPerformance;
 
         artistLabel.textContent = artist
           ? `Artista in esibizione: ${artist}`
@@ -219,7 +192,7 @@
       }
 
       async function refreshRunoffSection() {
-        const judgeName = judgeNameInput.value.trim();
+        const judgeName = getJudgeName();
 
         if (!runoffState || !runoffState.hasActiveRunoff) {
           runoffSection.style.display = 'none';
@@ -266,19 +239,24 @@
         await refreshRunoffSection();
       }
 
-      socket.on('state:init', (payload) => renderState(payload));
-      socket.on('state:updated', (payload) => renderState(payload));
-      socket.on('artist:changed', (payload) => {
+      async function onStateEvent(payload) {
+        renderState(payload);
+        await refreshJudgeVoteStatus();
+        renderState(latestState);
+      }
+
+      socket.on('state:init', (payload) => onStateEvent(payload));
+      socket.on('state:updated', (payload) => onStateEvent(payload));
+      socket.on('artist:changed', async (payload) => {
         feedback.textContent = '';
         selectedScore = null;
         document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
-        renderState(payload);
+        await onStateEvent(payload);
       });
-      socket.on('voting:closed', (payload) => renderState(payload));
-      socket.on('votes:cleared', (payload) => {
-        localStorage.removeItem(JUDGE_VOTED_KEY);
+      socket.on('voting:closed', (payload) => onStateEvent(payload));
+      socket.on('votes:cleared', async (payload) => {
         feedback.textContent = '';
-        renderState(payload);
+        await onStateEvent(payload);
       });
       socket.on('runoff:state', async (payload) => {
         runoffState = payload;
@@ -298,53 +276,13 @@
         await refreshRunoffSection();
       });
 
-      judgeNameInput.addEventListener('input', async () => {
-        renderState(latestState);
-        await refreshRunoffSection();
-      });
-
-      saveJudgeNameBtn.addEventListener('click', async () => {
-        await persistJudgeName();
-      });
-
-      editJudgeNameBtn.addEventListener('click', () => {
-        isEditingJudgeName = true;
-        applyJudgeNameUiState();
-        judgeNameInput.focus();
-        judgeNameInput.select();
-      });
-
-      confirmJudgeNameBtn.addEventListener('click', async () => {
-        const confirmed = window.confirm('Confermi la modifica del nome giudice?');
-        if (!confirmed) {
-          return;
-        }
-
-        await persistJudgeName();
-      });
-
-      judgeNameInput.addEventListener('keydown', async (event) => {
-        if (event.key !== 'Enter') {
-          return;
-        }
-
-        if (isEditingJudgeName) {
-          event.preventDefault();
-          const confirmed = window.confirm('Confermi la modifica del nome giudice?');
-          if (!confirmed) {
-            return;
-          }
-          await persistJudgeName();
-        }
-      });
-
       document.getElementById('logoutBtn').addEventListener('click', async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/login.html';
       });
 
       sendVoteBtn.addEventListener('click', async () => {
-        const judgeName = judgeNameInput.value.trim();
+        const judgeName = getJudgeName();
 
         if (!canVote) {
           feedback.textContent = 'Votazione non attiva.';
@@ -352,7 +290,7 @@
         }
 
         if (!judgeName) {
-          feedback.textContent = 'Inserisci il nome del giudice.';
+          feedback.textContent = 'Profilo giudice non disponibile.';
           return;
         }
 
@@ -383,7 +321,7 @@
           return;
         }
 
-        markJudgeVoted(currentLineupId, judgeName);
+        await refreshJudgeVoteStatus();
         votedMessage.textContent = `\u2713 Voto ${selectedScore}/10 inviato! Attendi la prossima esibizione.`;
         animateSuccess(votedMessage);
         voteSection.style.display = 'none';
@@ -398,7 +336,7 @@
         }
 
         const selectedLineupId = Number(target.getAttribute('data-runoff-lineup-id'));
-        const judgeName = judgeNameInput.value.trim();
+        const judgeName = getJudgeName();
 
         if (!selectedLineupId || !judgeName) {
           runoffFeedback.textContent = 'Inserisci il nome giudice prima di votare il ballottaggio.';
@@ -425,8 +363,21 @@
         await loadRunoffState();
       });
 
-      applyJudgeNameUiState();
-      loadRunoffState();
+      (async () => {
+        const meResponse = await fetch('/api/auth/me');
+        const me = await meResponse.json().catch(() => ({}));
+
+        if (!meResponse.ok || !me.authenticated || me.role !== 'regia') {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        currentJudgeName = String(me.fullName || me.username || '').trim();
+        applyJudgeNameUiState();
+        await refreshJudgeVoteStatus();
+        renderState(latestState);
+        await loadRunoffState();
+      })();
     </script>
     <footer class="legal-signature">
       <p>Codice creato da Maikol Mudoni</p>

@@ -21,8 +21,8 @@
 
       <section class="card">
         <h2>Vota un solo artista</h2>
-        <label for="judgeName">Nome giudice</label>
-        <input id="judgeName" type="text" placeholder="Es: Giudice 1" />
+        <label for="judgeName">Giudice autenticato</label>
+        <input id="judgeName" type="text" placeholder="Profilo giudice" readonly />
 
         <div id="choices" class="grid" style="margin-top: 12px;"></div>
         <p id="feedback"></p>
@@ -39,6 +39,12 @@
       const votedBadge = document.getElementById('votedBadge');
 
       let currentState = null;
+      let currentJudgeUsername = '';
+      let currentJudgeDisplayName = '';
+
+      function getJudgeName() {
+        return String(currentJudgeUsername || '').trim();
+      }
 
       function renderChoices(state, hasVoted) {
         if (!state || !state.hasActiveRunoff) {
@@ -69,7 +75,7 @@
       }
 
       async function refreshVoteStatus() {
-        const judgeName = judgeNameInput.value.trim();
+        const judgeName = getJudgeName();
         let hasVoted = false;
 
         if (currentState && currentState.hasActiveRunoff && judgeName) {
@@ -82,17 +88,15 @@
         renderChoices(currentState, hasVoted);
       }
 
-      judgeNameInput.addEventListener('input', refreshVoteStatus);
-
       choices.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof HTMLButtonElement)) {
           return;
         }
 
-        const judgeName = judgeNameInput.value.trim();
+        const judgeName = getJudgeName();
         if (!judgeName) {
-          feedback.textContent = 'Inserisci il nome del giudice.';
+          feedback.textContent = 'Profilo giudice non disponibile.';
           return;
         }
 
@@ -144,7 +148,20 @@
         refreshVoteStatus();
       });
 
-      loadState();
+      (async () => {
+        const meResponse = await fetch('/api/auth/me');
+        const me = await meResponse.json().catch(() => ({}));
+
+        if (!meResponse.ok || !me.authenticated || me.role !== 'regia') {
+          window.location.href = '/login.html';
+          return;
+        }
+
+        currentJudgeUsername = String(me.username || '').trim();
+        currentJudgeDisplayName = String(me.fullName || me.username || '').trim();
+        judgeNameInput.value = currentJudgeDisplayName;
+        await loadState();
+      })();
     </script>
     <footer class="legal-signature">
       <p>Codice creato da Maikol Mudoni</p>

@@ -140,11 +140,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
-const GESTIONE_USER = process.env.GESTIONE_USER || 'gestione';
-const GESTIONE_PIN = process.env.GESTIONE_PIN || '5678';
-const REGIA_USER = process.env.REGIA_USER || 'regia';
-const REGIA_PIN = process.env.REGIA_PIN || '2468';
+const ADMIN_PIN = process.env.ADMIN_PIN || 'votactionAdmin';
 const ROLE_LABELS = {
   admin: 'Admin',
   gestione: 'Regia',
@@ -198,20 +194,27 @@ function parseCookies(req) {
 
 const authSessions = new Map();
 
-function createSession(role) {
+function createSession(sessionData) {
   const token = crypto.randomBytes(24).toString('hex');
-  authSessions.set(token, { role, createdAt: Date.now() });
+  authSessions.set(token, {
+    ...sessionData,
+    createdAt: Date.now()
+  });
   return token;
 }
 
-function getRoleFromToken(req) {
+function getSessionFromToken(req) {
   const cookies = parseCookies(req);
   const token = cookies.auth_token;
   if (!token) {
     return null;
   }
 
-  const session = authSessions.get(token);
+  return authSessions.get(token) || null;
+}
+
+function getRoleFromToken(req) {
+  const session = getSessionFromToken(req);
   return session ? session.role : null;
 }
 
@@ -230,14 +233,6 @@ function getAccessRole(req) {
 
   if (user === ADMIN_USER && password === ADMIN_PIN) {
     return 'admin';
-  }
-
-  if (user === GESTIONE_USER && password === GESTIONE_PIN) {
-    return 'gestione';
-  }
-
-  if (user === REGIA_USER && password === REGIA_PIN) {
-    return 'regia';
   }
 
   return null;
@@ -334,51 +329,229 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/api/auth/login', (req, res) => {
-  const selectedRole = String(req.body.role || '').trim();
+app.post('/api/auth/login', async (req, res) => {
+  const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '').trim();
 
-  if (!selectedRole || !password) {
-    return res.status(400).json({ error: 'Ruolo e password obbligatori' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username e password obbligatori' });
   }
 
-  let role = null;
-  if (selectedRole === 'admin' && password === ADMIN_PIN) {
-    role = 'admin';
+  let sessionData;
+
+  if (username === ADMIN_USER && password === ADMIN_PIN) {
+    sessionData = {
+      role: 'admin',
+      username: ADMIN_USER,
+      firstName: 'Admin',
+      lastName: '',
+      fullName: 'Admin'
+    };
+  } else {
+    const result = await pool.query(
+      `SELECT username, password, first_name, last_name, role
+        FROM app_users
+        WHERE LOWER(username) = LOWER($1)
+        LIMIT 1`,
+      [username]
+    );
+
+    const user = result.rows[0];
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: 'Credenziali non valide' });
+    }
+
+    const fullName = `${user.first_name} ${user.last_name}`.trim();
+    sessionData = {
+      role: user.role,
+      username: user.username,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      fullName
+    };
   }
 
-  if (selectedRole === 'gestione' && password === GESTIONE_PIN) {
-    role = 'gestione';
-  }
-
-  if (selectedRole === 'regia' && password === REGIA_PIN) {
-    role = 'regia';
-  }
-
-  if (!role) {
-    return res.status(401).json({ error: 'Credenziali non valide' });
-  }
-
-  const token = createSession(role);
+  const token = createSession(sessionData);
   res.setHeader('Set-Cookie', `auth_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`);
   return res.status(200).json({
     message: 'Login effettuato',
-    role,
-    displayRole: ROLE_LABELS[role] || role
+    role: sessionData.role,
+    username: sessionData.username,
+    firstName: sessionData.firstName,
+    lastName: sessionData.lastName,
+    fullName: sessionData.fullName,
+    displayRole: ROLE_LABELS[sessionData.role] || sessionData.role
   });
 });
 
 app.get('/api/auth/me', (req, res) => {
+  const session = getSessionFromToken(req);
   const role = getAccessRole(req);
   if (!role) {
     return res.status(200).json({ authenticated: false });
   }
 
+  if (session) {
+    return res.status(200).json({
+      authenticated: true,
+      role,
+      username: session.username,
+      firstName: session.firstName,
+      lastName: session.lastName,
+      fullName: session.fullName,
+      displayRole: ROLE_LABELS[role] || role
+    });
+  }
+
+  if (role === 'admin') {
+    return res.status(200).json({
+      authenticated: true,
+      role,
+      username: ADMIN_USER,
+      firstName: 'Admin',
+      lastName: '',
+      fullName: 'Admin',
+      displayRole: ROLE_LABELS[role] || role
+    });
+  }
+
   return res.status(200).json({
     authenticated: true,
     role,
+    username: null,
+    firstName: null,
+    lastName: null,
+    fullName: null,
     displayRole: ROLE_LABELS[role] || role
   });
+});
+
+function normalizeManagedUserPayload(body) {
+  return {
+    username: String(body.username || '').trim(),
+    password: String(body.password || '').trim(),
+    firstName: String(body.firstName || '').trim(),
+    lastName: String(body.lastName || '').trim(),
+    role: String(body.role || '').trim()
+  };
+}
+
+function canManageUserType(operatorRole, targetRole) {
+  if (operatorRole === 'admin') {
+    return targetRole === 'gestione' || targetRole === 'regia';
+  }
+
+  if (operatorRole === 'gestione') {
+    return targetRole === 'regia';
+  }
+
+  return false;
+}
+
+app.get('/api/users', requireRoles(['gestione', 'admin']), async (req, res) => {
+  const whereClause = req.accessRole === 'gestione' ? "WHERE role = 'regia'" : '';
+  const result = await pool.query(
+    `SELECT id, username, first_name, last_name, role, created_at, updated_at
+      FROM app_users
+      ${whereClause}
+      ORDER BY role ASC, username ASC`
+  );
+
+  return res.status(200).json({ users: result.rows });
+});
+
+app.post('/api/users', requireRoles(['gestione', 'admin']), async (req, res) => {
+  const payload = normalizeManagedUserPayload(req.body);
+
+  if (!payload.username || !payload.password || !payload.firstName || !payload.lastName || !payload.role) {
+    return res.status(400).json({ error: 'Username, nome, cognome, ruolo e password sono obbligatori' });
+  }
+
+  if (!canManageUserType(req.accessRole, payload.role)) {
+    return res.status(403).json({ error: 'Non puoi creare questa tipologia di utenza' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO app_users (username, password, first_name, last_name, role)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id`,
+      [payload.username, payload.password, payload.firstName, payload.lastName, payload.role]
+    );
+
+    return res.status(201).json({ message: 'Utenza creata', id: result.rows[0].id });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Username gia esistente' });
+    }
+
+    return res.status(500).json({ error: 'Errore durante la creazione utenza' });
+  }
+});
+
+app.put('/api/users/:id', requireRoles(['gestione', 'admin']), async (req, res) => {
+  const userId = Number(req.params.id);
+  const payload = normalizeManagedUserPayload(req.body);
+
+  if (!Number.isInteger(userId) || userId < 1) {
+    return res.status(400).json({ error: 'userId non valido' });
+  }
+
+  if (!payload.username || !payload.firstName || !payload.lastName || !payload.role) {
+    return res.status(400).json({ error: 'Username, nome, cognome e ruolo sono obbligatori' });
+  }
+
+  if (!canManageUserType(req.accessRole, payload.role)) {
+    return res.status(403).json({ error: 'Non puoi assegnare questa tipologia di utenza' });
+  }
+
+  const existingResult = await pool.query(
+    `SELECT id, role FROM app_users WHERE id = $1 LIMIT 1`,
+    [userId]
+  );
+  const existing = existingResult.rows[0];
+
+  if (!existing) {
+    return res.status(404).json({ error: 'Utenza non trovata' });
+  }
+
+  if (!canManageUserType(req.accessRole, existing.role)) {
+    return res.status(403).json({ error: 'Non puoi modificare questa utenza' });
+  }
+
+  try {
+    if (payload.password) {
+      const updateWithPassword = await pool.query(
+        `UPDATE app_users
+          SET username = $1, password = $2, first_name = $3, last_name = $4, role = $5, updated_at = NOW()
+          WHERE id = $6`,
+        [payload.username, payload.password, payload.firstName, payload.lastName, payload.role, userId]
+      );
+
+      if (updateWithPassword.rowCount === 0) {
+        return res.status(404).json({ error: 'Utenza non trovata' });
+      }
+    } else {
+      const updateWithoutPassword = await pool.query(
+        `UPDATE app_users
+          SET username = $1, first_name = $2, last_name = $3, role = $4, updated_at = NOW()
+          WHERE id = $5`,
+        [payload.username, payload.firstName, payload.lastName, payload.role, userId]
+      );
+
+      if (updateWithoutPassword.rowCount === 0) {
+        return res.status(404).json({ error: 'Utenza non trovata' });
+      }
+    }
+
+    return res.status(200).json({ message: 'Utenza aggiornata' });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Username gia esistente' });
+    }
+
+    return res.status(500).json({ error: 'Errore durante l\'aggiornamento utenza' });
+  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -813,6 +986,24 @@ async function voteExists({ lineupId, role, voterName }) {
   return result.rows.length > 0;
 }
 
+function getAuthenticatedJudgeIdentity(req) {
+  const role = getAccessRole(req);
+  const authSession = getSessionFromToken(req);
+
+  if ((role !== 'regia' && role !== 'admin') || !authSession) {
+    return null;
+  }
+
+  const uniqueKey = String(authSession.username || '').trim();
+  const displayName = String(authSession.fullName || authSession.username || '').trim();
+
+  if (!uniqueKey) {
+    return null;
+  }
+
+  return { uniqueKey, displayName };
+}
+
 async function startPerformanceByLineupId(lineupId) {
   allVotesCompleted = false;
 
@@ -1150,6 +1341,38 @@ app.get('/api/public/vote-status', async (req, res) => {
   });
 });
 
+app.get('/api/judge/vote-status', requireRoles(['regia', 'admin']), async (req, res) => {
+  const identity = getAuthenticatedJudgeIdentity(req);
+  if (!identity) {
+    return res.status(401).json({ error: 'Profilo giudice non disponibile' });
+  }
+
+  const active = await getActiveSession();
+  if (!active || allVotesCompleted) {
+    return res.status(200).json({
+      hasActivePerformance: false,
+      hasVoted: false,
+      currentLineupId: active ? active.lineup_id : null,
+      isOpenForVoting: false,
+      judgeName: identity.displayName
+    });
+  }
+
+  const hasVoted = await voteExists({
+    lineupId: active.lineup_id,
+    role: 'judge',
+    voterName: identity.uniqueKey
+  });
+
+  return res.status(200).json({
+    hasActivePerformance: true,
+    hasVoted,
+    currentLineupId: active.lineup_id,
+    isOpenForVoting: Boolean(active.is_open),
+    judgeName: identity.displayName
+  });
+});
+
 app.get('/api/runoff/state', async (_req, res) => {
   res.status(200).json(await buildRunoffState());
 });
@@ -1157,8 +1380,9 @@ app.get('/api/runoff/state', async (_req, res) => {
 app.get('/api/runoff/vote-status', async (req, res) => {
   const session = await getActiveRunoffSession();
   const role = String(req.query.role || '').trim();
-  const voterName = String(req.query.voterName || '').trim();
+  let voterName = String(req.query.voterName || '').trim();
   const accessRole = getAccessRole(req);
+  const authSession = getSessionFromToken(req);
 
   if (!session) {
     return res.status(200).json({ hasActiveRunoff: false, hasVoted: false, isOpenForVoting: false });
@@ -1170,6 +1394,10 @@ app.get('/api/runoff/vote-status', async (req, res) => {
 
   if (role === 'judge' && accessRole !== 'regia' && accessRole !== 'admin') {
     return res.status(401).json({ error: 'Accesso riservato a regia o admin per stato voto giudice' });
+  }
+
+  if (role === 'judge' && authSession && authSession.role === 'regia' && authSession.username) {
+    voterName = authSession.username;
   }
 
   const hasVoted = voterName
@@ -1233,9 +1461,10 @@ app.post('/api/runoff/close', requireRoles(['gestione', 'admin']), async (_req, 
 app.post('/api/runoff/vote', async (req, res) => {
   const session = await getActiveRunoffSession();
   const role = String(req.body.role || '').trim();
-  const voterName = String(req.body.voterName || '').trim();
+  let voterName = String(req.body.voterName || '').trim();
   const selectedLineupId = Number(req.body.selectedLineupId);
   const accessRole = getAccessRole(req);
+  const authSession = getSessionFromToken(req);
 
   if (!session || !session.is_open) {
     return res.status(400).json({ error: 'Ballottaggio non attivo o chiuso' });
@@ -1247,6 +1476,10 @@ app.post('/api/runoff/vote', async (req, res) => {
 
   if (role === 'judge' && accessRole !== 'regia' && accessRole !== 'admin') {
     return res.status(401).json({ error: 'Accesso riservato a regia o admin per voto giudice' });
+  }
+
+  if (role === 'judge' && authSession && authSession.role === 'regia' && authSession.username) {
+    voterName = authSession.username;
   }
 
   if (!voterName) {
@@ -1279,6 +1512,7 @@ app.post('/api/vote', async (req, res) => {
   let voterName = String(req.body.voterName || req.body.judgeName || '').trim();
   const score = Number(req.body.score);
   const accessRole = getAccessRole(req);
+  const authSession = getSessionFromToken(req);
 
   if (allVotesCompleted) {
     return res.status(409).json({ error: 'Votazioni completate: non e piu possibile votare' });
@@ -1295,6 +1529,10 @@ app.post('/api/vote', async (req, res) => {
 
   if (role === 'judge' && accessRole !== 'regia' && accessRole !== 'admin') {
     return res.status(401).json({ error: 'Accesso riservato a regia o admin per voto giudice' });
+  }
+
+  if (role === 'judge' && authSession && authSession.role === 'regia' && authSession.username) {
+    voterName = authSession.username;
   }
 
   if (role === 'public' && !voterName) {

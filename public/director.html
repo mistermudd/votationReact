@@ -28,6 +28,27 @@
         font-size: 1.1rem;
         margin-bottom: 4px;
       }
+
+      .user-form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .user-form-grid .full {
+        grid-column: 1 / -1;
+      }
+
+      .compact-table td,
+      .compact-table th {
+        white-space: nowrap;
+      }
+
+      @media (max-width: 700px) {
+        .user-form-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
@@ -84,6 +105,66 @@
         <p id="judgeStats">Giudici: 0 voti | media 0</p>
         <p id="publicStats">Pubblico: 0 voti | media 0</p>
       </section>
+
+      <section id="users" class="card">
+        <h2>Gestione utenze</h2>
+        <p id="usersRoleInfo" style="margin-top: 0; opacity: 0.75;">Caricamento profilo...</p>
+
+        <form id="userForm" class="user-form-grid" style="margin-top: 8px;">
+          <input id="userId" type="hidden" />
+
+          <div>
+            <label for="username">Username</label>
+            <input id="username" type="text" placeholder="Es: giudice1" />
+          </div>
+
+          <div>
+            <label for="role">Ruolo</label>
+            <select id="role"></select>
+          </div>
+
+          <div>
+            <label for="firstName">Nome</label>
+            <input id="firstName" type="text" placeholder="Nome" />
+          </div>
+
+          <div>
+            <label for="lastName">Cognome</label>
+            <input id="lastName" type="text" placeholder="Cognome" />
+          </div>
+
+          <div class="full">
+            <label for="password">Password</label>
+            <input id="password" type="password" placeholder="Obbligatoria in creazione, opzionale in modifica" />
+          </div>
+
+          <div class="full" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="saveUserBtn" class="button button-primary" type="submit">Salva utenza</button>
+            <button id="cancelEditBtn" class="button button-secondary" type="button" style="display: none;">Annulla modifica</button>
+          </div>
+        </form>
+
+        <p id="usersFeedback"></p>
+
+        <div class="table-wrap" style="margin-top: 10px;">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Nome</th>
+                <th>Cognome</th>
+                <th>Ruolo</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr>
+                <td colspan="5">Nessuna utenza presente.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -97,9 +178,122 @@
       const judgeStats = document.getElementById('judgeStats');
       const publicStats = document.getElementById('publicStats');
       const directorFeedback = document.getElementById('directorFeedback');
+      const usersRoleInfo = document.getElementById('usersRoleInfo');
+      const userForm = document.getElementById('userForm');
+      const userIdInput = document.getElementById('userId');
+      const usernameInput = document.getElementById('username');
+      const roleSelect = document.getElementById('role');
+      const firstNameInput = document.getElementById('firstName');
+      const lastNameInput = document.getElementById('lastName');
+      const passwordInput = document.getElementById('password');
+      const saveUserBtn = document.getElementById('saveUserBtn');
+      const cancelEditBtn = document.getElementById('cancelEditBtn');
+      const usersFeedback = document.getElementById('usersFeedback');
+      const usersTableBody = document.getElementById('usersTableBody');
 
       let lastKnownLineupId = null;
       let lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
+      let authRole = null;
+      const roleLabels = { gestione: 'Regia', regia: 'Giudice' };
+
+      function getAllowedUserRoles() {
+        if (authRole === 'admin') {
+          return ['gestione', 'regia'];
+        }
+
+        if (authRole === 'gestione') {
+          return ['regia'];
+        }
+
+        return [];
+      }
+
+      function fillRoleOptions() {
+        const allowed = getAllowedUserRoles();
+        roleSelect.innerHTML = '';
+
+        allowed.forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = roleLabels[value] || value;
+          roleSelect.appendChild(option);
+        });
+      }
+
+      function clearUserForm() {
+        userIdInput.value = '';
+        usernameInput.value = '';
+        firstNameInput.value = '';
+        lastNameInput.value = '';
+        passwordInput.value = '';
+        cancelEditBtn.style.display = 'none';
+        saveUserBtn.textContent = 'Salva utenza';
+      }
+
+      async function loadUsers() {
+        const response = await fetch('/api/users');
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          usersFeedback.textContent = data.error || 'Errore nel caricamento utenze.';
+          return;
+        }
+
+        const users = Array.isArray(data.users) ? data.users : [];
+        if (users.length === 0) {
+          usersTableBody.innerHTML = '<tr><td colspan="5">Nessuna utenza presente.</td></tr>';
+          return;
+        }
+
+        usersTableBody.innerHTML = users
+          .map((user) => {
+            return '<tr>' +
+              `<td>${user.username}</td>` +
+              `<td>${user.first_name}</td>` +
+              `<td>${user.last_name}</td>` +
+              `<td>${roleLabels[user.role] || user.role}</td>` +
+              `<td><button class="button button-secondary" data-edit-user-id="${user.id}" type="button">Modifica</button></td>` +
+              '</tr>';
+          })
+          .join('');
+
+        usersTableBody.querySelectorAll('[data-edit-user-id]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const user = users.find((row) => String(row.id) === String(button.getAttribute('data-edit-user-id')));
+            if (!user) {
+              return;
+            }
+
+            userIdInput.value = String(user.id);
+            usernameInput.value = user.username;
+            firstNameInput.value = user.first_name;
+            lastNameInput.value = user.last_name;
+            roleSelect.value = user.role;
+            passwordInput.value = '';
+            cancelEditBtn.style.display = '';
+            saveUserBtn.textContent = 'Aggiorna utenza';
+            usersFeedback.textContent = `Modifica utenza: ${user.username}`;
+          });
+        });
+      }
+
+      async function ensureAuthContext() {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.authenticated) {
+          window.location.href = '/login.html';
+          return false;
+        }
+
+        authRole = data.role;
+        fillRoleOptions();
+        usersRoleInfo.textContent = authRole === 'admin'
+          ? 'Come Admin puoi creare e modificare utenze Regia e Giudice.'
+          : 'Come Regia puoi creare e modificare solo utenze Giudice.';
+
+        return true;
+      }
 
       function renderLineup(payload) {
         const lineup = payload.lineup || [];
@@ -218,6 +412,63 @@
       socket.on('artist:changed', (payload) => renderLive(payload));
       socket.on('voting:closed', (payload) => renderLive(payload));
       socket.on('vote:updated', (payload) => renderLive(payload));
+
+      cancelEditBtn.addEventListener('click', () => {
+        clearUserForm();
+        usersFeedback.textContent = '';
+      });
+
+      userForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        usersFeedback.textContent = '';
+
+        const payload = {
+          username: usernameInput.value.trim(),
+          firstName: firstNameInput.value.trim(),
+          lastName: lastNameInput.value.trim(),
+          role: roleSelect.value,
+          password: passwordInput.value.trim()
+        };
+
+        if (!payload.username || !payload.firstName || !payload.lastName || !payload.role) {
+          usersFeedback.textContent = 'Username, nome, cognome e ruolo sono obbligatori.';
+          return;
+        }
+
+        const userId = userIdInput.value.trim();
+        const isEdit = Boolean(userId);
+
+        if (!isEdit && !payload.password) {
+          usersFeedback.textContent = 'La password e obbligatoria in creazione.';
+          return;
+        }
+
+        const response = await fetch(isEdit ? `/api/users/${userId}` : '/api/users', {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json().catch(() => ({}));
+        usersFeedback.textContent = response.ok
+          ? data.message || (isEdit ? 'Utenza aggiornata.' : 'Utenza creata.')
+          : data.error || 'Errore nella gestione utenza.';
+
+        if (response.ok) {
+          clearUserForm();
+          await loadUsers();
+        }
+      });
+
+      (async () => {
+        const allowed = await ensureAuthContext();
+        if (!allowed) {
+          return;
+        }
+
+        clearUserForm();
+        await loadUsers();
+      })();
     </script>
     <footer class="legal-signature">
       <p>Codice creato da Maikol Mudoni</p>
