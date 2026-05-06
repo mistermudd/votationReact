@@ -554,6 +554,35 @@ app.put('/api/users/:id', requireRoles(['gestione', 'admin']), async (req, res) 
   }
 });
 
+app.delete('/api/users/:id', requireRoles(['admin']), async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId < 1) {
+    return res.status(400).json({ error: 'userId non valido' });
+  }
+
+  const currentSession = getSessionFromToken(req);
+  const targetResult = await pool.query(
+    `SELECT id, username FROM app_users WHERE id = $1 LIMIT 1`,
+    [userId]
+  );
+  const target = targetResult.rows[0];
+
+  if (!target) {
+    return res.status(404).json({ error: 'Utenza non trovata' });
+  }
+
+  if (currentSession && currentSession.username && currentSession.username === target.username) {
+    return res.status(409).json({ error: 'Non puoi cancellare l\'utenza attualmente loggata' });
+  }
+
+  const result = await pool.query('DELETE FROM app_users WHERE id = $1', [userId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: 'Utenza non trovata' });
+  }
+
+  return res.status(200).json({ message: 'Utenza eliminata' });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const cookies = parseCookies(req);
   if (cookies.auth_token) {

@@ -68,13 +68,13 @@
         <select id="lineupSelect"></select>
 
         <div class="control-actions">
-          <button id="startVoting" class="button button-secondary" type="button">
+          <button id="startVoting" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">▶</span>
-            <span>Avvia<br />votazione</span>
+            <span>Inizia<br />esibizione</span>
           </button>
           <button id="pauseVoting" class="button button-secondary" type="button">
             <span class="btn-icon" aria-hidden="true">⏸</span>
-            <span>Stop<br />votazione</span>
+            <span>Pausa<br />votazione</span>
           </button>
           <button id="resumeVoting" class="button button-secondary" type="button">
             <span class="btn-icon" aria-hidden="true">⏯</span>
@@ -82,11 +82,11 @@
           </button>
           <button id="nextAuto" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">⏭</span>
-            <span>Prossimo in gara<br />automatico</span>
+            <span>Prossimo<br />in ordine</span>
           </button>
           <button id="closeVoting" class="button button-danger" type="button">
-            <span class="btn-icon" aria-hidden="true">■</span>
-            <span>Chiudi<br />votazione</span>
+            <span class="btn-icon" aria-hidden="true">⏹</span>
+            <span>Termina<br />esibizione</span>
           </button>
           <button id="completeVoting" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">✅</span>
@@ -94,6 +94,20 @@
           </button>
         </div>
         <p id="directorFeedback" style="margin-top: 10px;"></p>
+      </section>
+
+      <section class="card">
+        <h2>Navigazione rapida Regia</h2>
+        <div class="control-actions">
+          <button id="openRunoffManage" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⚖</span>
+            <span>Apri<br />Ballottaggio</span>
+          </button>
+          <button id="openQrAccess" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">🔗</span>
+            <span>Apri<br />QR Accessi</span>
+          </button>
+        </div>
       </section>
 
       <section class="card">
@@ -247,12 +261,15 @@
 
         usersTableBody.innerHTML = users
           .map((user) => {
+            const deleteButton = authRole === 'admin'
+              ? ` <button class="button button-danger" data-delete-user-id="${user.id}" type="button">Elimina</button>`
+              : '';
             return '<tr>' +
               `<td>${user.username}</td>` +
               `<td>${user.first_name}</td>` +
               `<td>${user.last_name}</td>` +
               `<td>${roleLabels[user.role] || user.role}</td>` +
-              `<td><button class="button button-secondary" data-edit-user-id="${user.id}" type="button">Modifica</button></td>` +
+              `<td><button class="button button-secondary" data-edit-user-id="${user.id}" type="button">Modifica</button>${deleteButton}</td>` +
               '</tr>';
           })
           .join('');
@@ -275,6 +292,34 @@
             usersFeedback.textContent = `Modifica utenza: ${user.username}`;
           });
         });
+
+        if (authRole === 'admin') {
+          usersTableBody.querySelectorAll('[data-delete-user-id]').forEach((button) => {
+            button.addEventListener('click', async () => {
+              const targetId = String(button.getAttribute('data-delete-user-id') || '');
+              const user = users.find((row) => String(row.id) === targetId);
+              if (!targetId || !user) {
+                return;
+              }
+
+              const confirmed = window.confirm(`Confermi eliminazione utenza ${user.username}?`);
+              if (!confirmed) {
+                return;
+              }
+
+              const response = await fetch(`/api/users/${targetId}`, { method: 'DELETE' });
+              const data = await response.json().catch(() => ({}));
+              usersFeedback.textContent = response.ok
+                ? data.message || 'Utenza eliminata.'
+                : data.error || 'Errore eliminazione utenza.';
+
+              if (response.ok) {
+                clearUserForm();
+                await loadUsers();
+              }
+            });
+          });
+        }
       }
 
       async function ensureAuthContext() {
@@ -404,6 +449,14 @@
         directorFeedback.textContent = response.ok
           ? data.message || 'Stato votazioni completate impostato.'
           : data.error || 'Errore durante la chiusura finale delle votazioni.';
+      });
+
+      document.getElementById('openRunoffManage').addEventListener('click', () => {
+        window.location.href = '/runoff-manage.html';
+      });
+
+      document.getElementById('openQrAccess').addEventListener('click', () => {
+        window.location.href = '/qr-access.html';
       });
 
       socket.on('state:init', (payload) => renderLive(payload));

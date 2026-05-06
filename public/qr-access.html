@@ -115,6 +115,7 @@
       const publicLink = document.getElementById('publicLink');
       const downloadRegiaBtn = document.getElementById('downloadRegiaBtn');
       const downloadPublicBtn = document.getElementById('downloadPublicBtn');
+      const DEFAULT_BASE_URL = 'https://votationreact.onrender.com/';
 
       const QR_LIB_URLS = [
         '/vendor/qrcode.min.js',
@@ -268,7 +269,7 @@
       }
 
       function resetAll() {
-        baseUrlInput.value = '';
+        baseUrlInput.value = DEFAULT_BASE_URL;
         regiaTarget.value = 'director';
         refreshRegiaDescription();
         errorText.textContent = '';
@@ -293,6 +294,7 @@
       downloadRegiaBtn.addEventListener('click', () => downloadQrFromTarget(regiaQr, 'qr-accesso-regia.png'));
       downloadPublicBtn.addEventListener('click', () => downloadQrFromTarget(publicQr, 'qr-accesso-pubblico.png'));
       refreshRegiaDescription();
+      baseUrlInput.value = DEFAULT_BASE_URL;
     </script>
     <footer class="legal-signature">
       <p>Codice creato da Maikol Mudoni</p>
