@@ -38,7 +38,7 @@ Sistema di votazione in tempo reale per eventi dal vivo (spettacoli, talent show
 ```
 Node.js + Express 5
 ├── Socket.IO 4  →  aggiornamenti real-time
-├── better-sqlite3  →  database SQLite (WAL mode)
+├── pg (PostgreSQL/Neon)  →  database relazionale
 └── public/  →  frontend statico HTML/CSS/JS vanilla
 ```
 
@@ -57,14 +57,15 @@ Node.js + Express 5
 
 | URL | Ruolo richiesto | Descrizione |
 |---|---|---|
-| `/login.html` | — | Login con ruolo e PIN |
+| `/login.html` | — | Login con username e password |
 | `/public.html` | — | Voto pubblico (no login) |
 | `/judge.html` | Giudice | Voto giudice |
-| `/director.html` | Regia / Admin | Stato live e controllo votazione |
-| `/lineup.html` | Regia / Admin | Gestione scaletta artisti |
-| `/report.html` | Regia / Admin | Classifiche con pesi configurabili |
+| `/director.html` | Regia / Admin | Stato live, controllo votazione e gestione utenze |
+| `/lineup.html` | Regia | Gestione scaletta artisti |
+| `/report.html` | Regia | Classifiche con pesi configurabili |
 | `/performance.html` | Admin | Avanza/pausa/termina esibizioni |
-| `/runoff-manage.html` | Regia / Admin | Gestione ballottaggio |
+| `/runoff-manage.html` | Regia | Gestione ballottaggio |
+| `/qr-access.html` | Regia | Generatore QR accessi |
 | `/runoff-judge.html` | Giudice | Voto ballottaggio giudice |
 | `/runoff-public.html` | — | Voto ballottaggio pubblico |
 | `/index.html` | Tutti | Menu principale post-login |
@@ -147,6 +148,7 @@ Tutte le API protette utilizzano il cookie di sessione `auth_token` oppure HTTP 
 | `GET` | `/api/state` | Tutti | Stato corrente esibizione |
 | `POST` | `/api/vote` | Tutti | Invia voto `{role, voterName, score}` |
 | `GET` | `/api/public/vote-status` | — | Controlla se il dispositivo ha già votato |
+| `GET` | `/api/judge/vote-status` | Giudice / Admin | Controlla se il giudice autenticato ha già votato nell'esibizione attiva |
 
 ### Scaletta
 
@@ -157,6 +159,15 @@ Tutte le API protette utilizzano il cookie di sessione `auth_token` oppure HTTP 
 | `PUT` | `/api/lineup/:id` | Regia / Admin | Modifica artista |
 | `DELETE` | `/api/lineup/:id` | Regia / Admin | Elimina artista |
 | `POST` | `/api/lineup/activate` | Regia / Admin | Attiva esibizione `{lineupId}` |
+
+### Utenze (Gestione utenti applicativi)
+
+| Metodo | Path | Ruolo | Descrizione |
+|---|---|---|---|
+| `GET` | `/api/users` | Regia / Admin | Elenco utenze (Regia vede solo utenze Giudice) |
+| `POST` | `/api/users` | Regia / Admin | Crea utenza `{username, password, firstName, lastName, role}` |
+| `PUT` | `/api/users/:id` | Regia / Admin | Modifica utenza |
+| `DELETE` | `/api/users/:id` | Admin | Elimina utenza |
 
 ### Controllo esibizione (solo Admin)
 
@@ -185,11 +196,18 @@ Tutte le API protette utilizzano il cookie di sessione `auth_token` oppure HTTP 
 |---|---|---|---|
 | `GET` | `/api/report` | Regia / Admin | Classifiche `?judgeWeight=50&publicWeight=50` |
 
+### Note permessi applicativi
+
+- In menu principale la Regia vede: Conduzione, Lineup, Resoconto, Ballottaggio, QR Accessi, Aggiungi nuovo giudice.
+- In menu principale l'Admin non vede più i link Regia e Pubblico.
+- Al login il Giudice viene reindirizzato direttamente a `/judge.html`.
+- Nelle pagine Giudice è presente solo il pulsante Logout (senza Torna indietro).
+
 ### Admin
 
 | Metodo | Path | Descrizione |
 |---|---|---|
-| `GET` | `/api/admin/db-backup` | Scarica file `.db` SQLite |
+| `GET` | `/api/admin/db-backup` | Scarica backup JSON del database |
 | `POST` | `/api/admin/backup-now` | Forza backup su GitHub Gist |
 | `POST` | `/api/admin/clear-votes` | Cancella tutti i voti |
 | `GET` | `/healthz` | Healthcheck (restituisce `{ok:true}`) |
@@ -268,7 +286,7 @@ Vedi [/cookie-policy.html](/cookie-policy.html) per la policy completa.
 In sintesi, questo sistema usa:
 - **`auth_token`** (cookie di sessione, HttpOnly) — per autenticare i ruoli Regia / Giudice / Admin. Scade con la sessione del browser.
 - **`public-voter-device-id`** (localStorage) — identificativo anonimo del dispositivo usato dal pubblico per evitare voti doppi. Non contiene dati personali.
-- **`judge-voted-per-lineup`** e **`judge-saved-name`** (localStorage) — memorizzano localmente lo stato di voto del giudice. Non vengono mai inviati a server terzi.
+- Per i giudici, nome profilo e stato voto (1 voto per esibizione) vengono gestiti lato server in base all'utenza autenticata.
 
 Nessun cookie di profilazione, advertising o tracciamento viene utilizzato.
 
