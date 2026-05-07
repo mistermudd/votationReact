@@ -861,6 +861,30 @@ select {
   animation: micWait 1.7s ease-in-out infinite;
 }
 
+.show-state-intro .scene-notes {
+  opacity: 1;
+}
+
+.show-state-intro .scene-note.n1 {
+  animation: noteRiseA 1.8s ease-in-out infinite;
+}
+
+.show-state-intro .scene-note.n2 {
+  animation: noteRiseB 2s ease-in-out infinite 0.2s;
+}
+
+.show-state-intro .scene-note.n3 {
+  animation: noteRiseA 1.9s ease-in-out infinite 0.28s;
+}
+
+.show-state-intro .scene-note.n4 {
+  animation: noteRiseB 2.1s ease-in-out infinite 0.12s;
+}
+
+.show-state-intro .scene-note.n5 {
+  animation: noteRiseA 1.85s ease-in-out infinite 0.35s;
+}
+
 .show-state-paused .scene-curtain.left {
   transform: translateX(-56%);
 }

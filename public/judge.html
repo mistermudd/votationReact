@@ -277,19 +277,27 @@
         songLabel.style.display = hasActivePerformance && sessionHasBeenOpened && song ? '' : 'none';
 
         canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;
-        voteSection.style.display = (hasActivePerformance && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
+        voteSection.style.display = (hasActivePerformance && open && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
         votedSection.style.display = (hasActivePerformance && alreadyVoted && !allVotesCompleted) ? '' : 'none';
         allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted, sessionHasBeenOpened);
 
-        waitingWrap.style.display = 'none';
+        // Mostra il box di attesa se in pausa iniziale (prima apertura votazione)
+        if (hasActivePerformance && !sessionHasBeenOpened) {
+          waitingWrap.style.display = '';
+        } else {
+          waitingWrap.style.display = 'none';
+        }
 
         if (!hasActivePerformance) {
+          showScene.style.display = 'none';
           feedback.textContent = '';
           selectedScore = null;
           document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        } else {
+          showScene.style.display = '';
         }
       }
 

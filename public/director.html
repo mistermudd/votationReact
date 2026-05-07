@@ -525,7 +525,7 @@
         const response = await fetch('/api/lineup/activate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineupId, skipIntro: true })
+          body: JSON.stringify({ lineupId })
         });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok

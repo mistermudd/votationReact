@@ -213,7 +213,7 @@
 
         waitingWrap.style.display = 'none';
 
-        voteSection.style.display = (hasActivePerf && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
+        voteSection.style.display = (hasActivePerf && isOpenForVoting && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
         votedSection.style.display = (hasActivePerf && alreadyVoted && !allVotesCompleted) ? '' : 'none';
       }
 
@@ -249,14 +249,24 @@
         songLabel.style.display = hasActivePerf && sessionHasBeenOpened && song ? '' : 'none';
 
         if (!hasActivePerf) {
+          showScene.style.display = 'none';
           voteSection.style.display = 'none';
           votedSection.style.display = 'none';
           feedback.textContent = '';
           selectedScore = null;
           document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
+        } else {
+          showScene.style.display = '';
         }
 
         refreshVoteAvailability();
+        
+        // Mostra il box di attesa se in pausa iniziale (prima apertura votazione)
+        if (hasActivePerf && !sessionHasBeenOpened) {
+          waitingWrap.style.display = '';
+        } else {
+          waitingWrap.style.display = 'none';
+        }
       }
 
       async function refreshRunoffSection() {
