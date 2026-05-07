@@ -96,6 +96,10 @@
             <span class="btn-icon" aria-hidden="true">✅</span>
             <span>Tutte votazioni<br />effettuate</span>
           </button>
+          <button id="resetShowState" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">🧹</span>
+            <span>Pulisci stato<br />spettacolo</span>
+          </button>
         </div>
         <p id="directorFeedback" style="margin-top: 10px;"></p>
       </section>
@@ -436,6 +440,10 @@
           hasOpenedCurrentPerformance = false;
         } else if (lineupId) {
           lastKnownStats = incomingStats;
+        } else {
+          lastKnownLineupId = null;
+          lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
+          hasOpenedCurrentPerformance = false;
         }
 
         if (lineupId && open) {
@@ -590,6 +598,19 @@
         directorFeedback.textContent = response.ok
           ? data.message || 'Stato votazioni completate impostato.'
           : data.error || 'Errore durante la chiusura finale delle votazioni.';
+      });
+
+      document.getElementById('resetShowState').addEventListener('click', async () => {
+        const confirmed = window.confirm('Confermi la pulizia dello stato dello spettacolo? La sessione attiva verra chiusa ma i voti salvati non verranno cancellati.');
+        if (!confirmed) {
+          return;
+        }
+
+        const response = await fetch('/api/performance/reset-state', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Stato spettacolo ripulito.'
+          : data.error || 'Errore durante la pulizia dello stato spettacolo.';
       });
 
       document.getElementById('openRunoffManage').addEventListener('click', () => {

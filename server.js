@@ -1599,6 +1599,13 @@ app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), async (_re
   return res.status(200).json({ message: 'Tutte le votazioni sono state effettuate', state: payload });
 });
 
+app.post('/api/performance/reset-state', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  allVotesCompleted = false;
+  await closeAnyActiveSession();
+  const payload = await emitState('performance:reset');
+  return res.status(200).json({ message: 'Stato spettacolo ripulito', state: payload });
+});
+
 app.get('/api/admin/export-lineup', requireRoles(['admin']), async (_req, res) => {
   const lineup = await getLineup();
   const filename = `lineup-${new Date().toISOString().split('T')[0]}.json`;
