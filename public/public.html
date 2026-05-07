@@ -10,7 +10,7 @@
     <div class="container fade-in">
       <section class="hero">
         <h1><span class="page-icon">&#127881;</span> Voto Pubblico</h1>
-        <p id="artistLabel" class="performance-artist">In attesa dell'artista...</p>
+        <p id="artistLabel" class="performance-artist">In attesa dell'artista/gruppo...</p>
         <p id="songLabel" class="performance-song" style="display: none;"></p>
         <span id="statusChip" class="status-chip status-closed" style="display: none;">Votazione chiusa</span>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
@@ -84,7 +84,7 @@
         <p>Punteggio da 1 a 10:</p>
         <div id="scoreButtons" class="score-buttons"></div>
         <button id="sendVoteBtn" class="button button-primary" style="margin-top: 12px;">
-          Vota cantante
+          Vota l'esibizione
         </button>
         <p id="feedback"></p>
       </section>
@@ -186,7 +186,7 @@
 
         if (hasActivePerf && isOpenForVoting) {
           showScene.classList.add('show-state-open');
-          sceneCaption.textContent = "L'artista si sta esibendo.";
+          sceneCaption.textContent = "L'artista/gruppo si sta esibendo.";
           console.log('[Pausa Debug] CSS aggiunto: show-state-open');
           return;
         }
@@ -266,7 +266,7 @@
 
         // Nascondi nomi se è attivo un ballottaggio
         const hasRunoff = runoffState && runoffState.hasActiveRunoff;
-        artistLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? `Artista/Gruppo in esibizione: ${artist}` : '';
         artistLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? '' : 'none';
         songLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? `Nome esibizione: ${song}` : '';
         songLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? '' : 'none';
@@ -313,7 +313,7 @@
         }
 
         runoffStatus.textContent = runoffState.isOpenForVoting
-          ? 'Ballottaggio aperto: scegli un solo artista.'
+          ? 'Ballottaggio aperto: scegli un solo artista/gruppo.'
           : 'Ballottaggio chiuso.';
         runoffVotedBadge.style.display = hasVoted ? 'block' : 'none';
 

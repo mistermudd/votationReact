@@ -14,7 +14,7 @@
     <div class="container fade-in">
       <section class="hero">
         <h1><span class="page-icon">&#127942;</span> Pagina Giudice <span id="judgeNameTitle" style="font-size: 0.8em; opacity: 0.85;"></span></h1>
-        <p id="artistLabel" class="performance-artist">In attesa dell'artista...</p>
+        <p id="artistLabel" class="performance-artist">In attesa dell'artista/gruppo...</p>
         <p id="songLabel" class="performance-song" style="display: none;"></p>
         <span id="statusChip" class="status-chip status-closed" style="display: none;">Votazione chiusa</span>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
@@ -225,7 +225,7 @@
 
         if (hasActivePerformance && open) {
           showScene.classList.add('show-state-open');
-          sceneCaption.textContent = "L'artista si sta esibendo.";
+          sceneCaption.textContent = "L'esibizione è in corso.";
           return;
         }
 
@@ -283,7 +283,7 @@
 
         const alreadyVoted = hasAlreadyVotedCurrentPerformance;
 
-        artistLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? `Artista/Gruppo in esibizione: ${artist}` : '';
         artistLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? '' : 'none';
         songLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? `Nome esibizione: ${song}` : '';
         songLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? '' : 'none';
@@ -336,7 +336,7 @@
         }
 
         runoffStatus.textContent = runoffState.isOpenForVoting
-          ? 'Ballottaggio aperto: scegli un solo artista.'
+          ? 'Ballottaggio aperto: scegli un solo artista/gruppo.'
           : 'Ballottaggio chiuso.';
         runoffVotedBadge.style.display = hasVoted ? 'block' : 'none';
 

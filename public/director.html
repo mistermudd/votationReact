@@ -64,7 +64,7 @@
 
       <section class="card">
         <h2>Attiva esibizione</h2>
-        <label for="lineupSelect">Artista in lineup</label>
+        <label for="lineupSelect">Artista/Gruppo in lineup</label>
         <select id="lineupSelect"></select>
 
         <div class="control-actions">
@@ -126,11 +126,11 @@
         <h2>Ballottaggio</h2>
         <div class="grid grid-2">
           <div>
-            <label for="directorRunoffFirst">Primo artista</label>
+            <label for="directorRunoffFirst">Primo artista/gruppo</label>
             <select id="directorRunoffFirst"></select>
           </div>
           <div>
-            <label for="directorRunoffSecond">Secondo artista</label>
+            <label for="directorRunoffSecond">Secondo artista/gruppo</label>
             <select id="directorRunoffSecond"></select>
           </div>
         </div>
@@ -153,7 +153,7 @@
 
       <section class="card">
         <h2>Stato live</h2>
-        <p id="liveArtist" class="performance-artist">Nessun artista selezionato.</p>
+        <p id="liveArtist" class="performance-artist">Nessun artista/gruppo selezionato.</p>
         <p id="liveSong" class="performance-song" style="display: none;"></p>
         <p id="liveStatus">Votazione chiusa.</p>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
@@ -527,7 +527,7 @@
 
         const stats = lastKnownStats;
 
-        liveArtist.textContent = hasActivePerformance && sessionHasBeenOpened ? `Artista corrente: ${artist}` : '';
+        liveArtist.textContent = hasActivePerformance && sessionHasBeenOpened ? `Artista/Gruppo corrente: ${artist}` : '';
         liveArtist.style.display = hasActivePerformance && sessionHasBeenOpened ? '' : 'none';
         liveSong.textContent = hasActivePerformance && sessionHasBeenOpened && song ? `Esibizione: ${song}` : '';
         liveSong.style.display = hasActivePerformance && sessionHasBeenOpened && song ? '' : 'none';
@@ -586,7 +586,7 @@
         const lineupId = selected || fallback;
 
         if (!lineupId) {
-          directorFeedback.textContent = 'Nessun artista in lineup disponibile per avviare lo spettacolo.';
+          directorFeedback.textContent = 'Nessun artista/gruppo in lineup disponibile per avviare lo spettacolo.';
           return;
         }
 
@@ -607,7 +607,7 @@
         const lineupId = selected || fallback;
 
         if (!lineupId) {
-          directorFeedback.textContent = 'Nessun artista in lineup disponibile per avviare lo spettacolo.';
+          directorFeedback.textContent = 'Nessun artista/gruppo in lineup disponibile per avviare lo spettacolo.';
           return;
         }
 
