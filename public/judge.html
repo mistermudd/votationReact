@@ -30,6 +30,14 @@
             <div class="leg left"></div>
             <div class="leg right"></div>
           </div>
+          <div class="scene-singer-second">
+            <div class="head"></div>
+            <div class="body"></div>
+            <div class="arm left"></div>
+            <div class="arm right"></div>
+            <div class="leg left"></div>
+            <div class="leg right"></div>
+          </div>
           <div class="scene-mic">
             <span class="mic-head"></span>
             <span class="mic-stand"></span>
@@ -65,11 +73,6 @@
           </div>
           <div class="scene-bubble">E tutto!</div>
           <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
-        </div>
-        <div id="waitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
-          <div class="waiting-loader" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </div>
         </div>
         <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <div id="judgeNameBox" style="margin-top: 16px;">
@@ -206,7 +209,13 @@
           return;
         }
 
-        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
+        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete', 'show-state-runoff');
+
+        if (runoffState && runoffState.hasActiveRunoff) {
+          showScene.classList.add('show-state-runoff');
+          sceneCaption.textContent = 'Ballottaggio: due artisti a confronto.';
+          return;
+        }
 
         if (allVotesCompleted) {
           showScene.classList.add('show-state-complete');
@@ -257,7 +266,8 @@
           isOpenForVoting: Boolean(payload.isOpenForVoting),
           isPaused: Boolean(payload.isPaused),
           hasActivePerformance: Boolean(payload.hasActivePerformance),
-          allVotesCompleted: Boolean(payload.allVotesCompleted)
+          allVotesCompleted: Boolean(payload.allVotesCompleted),
+          sessionHasBeenOpened: Boolean(payload.sessionHasBeenOpened)
         };
 
         const artist = latestState.currentArtist;
@@ -269,17 +279,19 @@
         const sessionHasBeenOpened = Boolean(latestState.sessionHasBeenOpened);
         currentLineupId = latestState.currentLineupId;
 
+        console.log('[Pausa Debug Judge] Payload ricevuto:', { hasActivePerformance, open, sessionHasBeenOpened });
+
         const alreadyVoted = hasAlreadyVotedCurrentPerformance;
 
-        artistLabel.textContent = hasActivePerformance && sessionHasBeenOpened ? `Artista in esibizione: ${artist}` : '';
-        artistLabel.style.display = hasActivePerformance && sessionHasBeenOpened ? '' : 'none';
-        songLabel.textContent = hasActivePerformance && sessionHasBeenOpened && song ? `Nome esibizione: ${song}` : '';
-        songLabel.style.display = hasActivePerformance && sessionHasBeenOpened && song ? '' : 'none';
+        artistLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? '' : 'none';
+        songLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? `Nome esibizione: ${song}` : '';
+        songLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? '' : 'none';
 
         canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;
         voteSection.style.display = (hasActivePerformance && open && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
         votedSection.style.display = (hasActivePerformance && alreadyVoted && !allVotesCompleted) ? '' : 'none';
-        allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
+        allDoneMessage.style.display = allVotesCompleted && !(runoffState && runoffState.hasActiveRunoff) ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted, sessionHasBeenOpened);
@@ -292,12 +304,9 @@
         }
 
         if (!hasActivePerformance) {
-          showScene.style.display = 'none';
           feedback.textContent = '';
           selectedScore = null;
           document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
-        } else {
-          showScene.style.display = '';
         }
       }
 
@@ -307,10 +316,14 @@
         if (!runoffState || !runoffState.hasActiveRunoff) {
           runoffSection.style.display = 'none';
           runoffFeedback.textContent = '';
+          allDoneMessage.style.display = Boolean(latestState.allVotesCompleted) ? '' : 'none';
           return;
         }
 
         runoffSection.style.display = '';
+        artistLabel.style.display = 'none';
+        songLabel.style.display = 'none';
+        allDoneMessage.style.display = 'none';
         let hasVoted = false;
 
         if (judgeName) {
@@ -364,25 +377,54 @@
         await onStateEvent(payload);
       });
       socket.on('voting:closed', (payload) => onStateEvent(payload));
+      socket.on('voting:paused', (payload) => onStateEvent(payload));
       socket.on('votes:cleared', async (payload) => {
         feedback.textContent = '';
         await onStateEvent(payload);
       });
       socket.on('runoff:state', async (payload) => {
         runoffState = payload;
+        updateShowSceneState(
+          Boolean(latestState.hasActivePerformance),
+          Boolean(latestState.isOpenForVoting),
+          Boolean(latestState.isPaused),
+          Boolean(latestState.allVotesCompleted),
+          Boolean(latestState.sessionHasBeenOpened)
+        );
         await refreshRunoffSection();
       });
       socket.on('runoff:started', async (payload) => {
         runoffFeedback.textContent = '';
         runoffState = payload;
+        updateShowSceneState(
+          Boolean(latestState.hasActivePerformance),
+          Boolean(latestState.isOpenForVoting),
+          Boolean(latestState.isPaused),
+          Boolean(latestState.allVotesCompleted),
+          Boolean(latestState.sessionHasBeenOpened)
+        );
         await refreshRunoffSection();
       });
       socket.on('runoff:closed', async (payload) => {
         runoffState = payload;
+        updateShowSceneState(
+          Boolean(latestState.hasActivePerformance),
+          Boolean(latestState.isOpenForVoting),
+          Boolean(latestState.isPaused),
+          Boolean(latestState.allVotesCompleted),
+          Boolean(latestState.sessionHasBeenOpened)
+        );
         await refreshRunoffSection();
       });
       socket.on('runoff:vote-updated', async (payload) => {
         runoffState = payload;
+        updateShowSceneState(
+          Boolean(latestState.hasActivePerformance),
+          Boolean(latestState.isOpenForVoting),
+          Boolean(latestState.isPaused),
+          Boolean(latestState.allVotesCompleted),
+          Boolean(latestState.sessionHasBeenOpened)
+        );
         await refreshRunoffSection();
       });
 
@@ -477,7 +519,7 @@
         const meResponse = await fetch('/api/auth/me');
         const me = await meResponse.json().catch(() => ({}));
 
-        if (!meResponse.ok || !me.authenticated || me.role !== 'regia') {
+        if (!meResponse.ok || !me.authenticated || (me.role !== 'regia' && me.role !== 'admin')) {
           window.location.href = '/login.html';
           return;
         }

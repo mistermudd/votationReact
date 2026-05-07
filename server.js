@@ -825,6 +825,7 @@ async function buildStatePayload() {
       hasActivePerformance: false,
       isOpenForVoting: false,
       isPaused: false,
+      sessionHasBeenOpened: false,
       allVotesCompleted,
       nextLineup: next
         ? {
@@ -1230,17 +1231,18 @@ app.post('/api/artist', requireRoles(['admin']), async (req, res) => {
 app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), async (req, res) => {
   const lineupId = Number(req.body.lineupId);
   const skipIntro = Boolean(req.body.skipIntro);
+  const openVoting = Boolean(req.body.openVoting);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const payload = await startPerformanceByLineupId(lineupId, { openVoting: false, skipIntro });
+  const payload = await startPerformanceByLineupId(lineupId, { openVoting, skipIntro });
   if (!payload) {
     return res.status(404).json({ error: 'lineupId non trovato' });
   }
 
-  return res.status(200).json({ message: 'Esibizione attivata, votazione in pausa', state: payload });
+  return res.status(200).json({ message: 'Esibizione attivata, votazione ' + (openVoting ? 'aperta' : 'in pausa'), state: payload });
 });
 
 app.post('/api/performance/start', requireRoles(['admin']), async (req, res) => {
@@ -1259,20 +1261,25 @@ app.post('/api/performance/start', requireRoles(['admin']), async (req, res) => 
 });
 
 app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), async (_req, res) => {
-  const active = await getActiveSession();
+  try {
+    const active = await getActiveSession();
 
-  if (!active) {
-    return res.status(400).json({ error: 'Nessuna esibizione attiva' });
+    if (!active) {
+      return res.status(400).json({ error: 'Nessuna esibizione attiva' });
+    }
+
+    if (!active.is_open) {
+      return res.status(400).json({ error: 'Votazione gia in pausa' });
+    }
+
+    await pool.query('UPDATE sessions SET is_open = FALSE WHERE id = $1', [active.session_id]);
+    const payload = await emitState('voting:paused');
+
+    return res.status(200).json({ message: 'Votazione in pausa', state: payload });
+  } catch (err) {
+    console.error('Errore in /api/performance/pause:', err);
+    return res.status(500).json({ error: 'Errore durante la pausa della votazione' });
   }
-
-  if (!active.is_open) {
-    return res.status(400).json({ error: 'Votazione gia in pausa' });
-  }
-
-  await pool.query('UPDATE sessions SET is_open = FALSE WHERE id = $1', [active.session_id]);
-  const payload = await emitState('voting:paused');
-
-  return res.status(200).json({ message: 'Votazione in pausa', state: payload });
 });
 
 app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), async (_req, res) => {
@@ -1341,13 +1348,14 @@ app.post('/api/close-voting', requireRoles(['gestione', 'admin']), async (_req, 
     return res.status(400).json({ error: 'Nessuna esibizione attiva' });
   }
 
+  // Metti in pausa senza chiudere la sessione (sessione rimane active)
   await pool.query(
-    `UPDATE sessions SET is_open = FALSE, ended_at = NOW() WHERE id = $1`,
+    `UPDATE sessions SET is_open = FALSE WHERE id = $1`,
     [active.session_id]
   );
 
   const payload = await emitState('voting:closed');
-  return res.status(200).json({ message: 'Votazione chiusa', state: payload });
+  return res.status(200).json({ message: 'Esibizione in pausa con microfono in attesa', state: payload });
 });
 
 app.get('/api/public/vote-status', async (req, res) => {

@@ -72,9 +72,9 @@
             <span class="btn-icon" aria-hidden="true">🎬</span>
             <span>Avvia<br />spettacolo</span>
           </button>
-          <button id="startVoting" class="button button-primary" type="button">
-            <span class="btn-icon" aria-hidden="true">▶</span>
-            <span>Inizia<br />esibizione (pausa)</span>
+          <button id="startShowWithVoting" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">🎬▶</span>
+            <span>Inizia esibizione<br />e votazione</span>
           </button>
           <button id="pauseVoting" class="button button-secondary" type="button">
             <span class="btn-icon" aria-hidden="true">⏸</span>
@@ -120,6 +120,35 @@
             <span>Apri<br />QR Accessi</span>
           </button>
         </div>
+      </section>
+
+      <section class="card">
+        <h2>Ballottaggio</h2>
+        <div class="grid grid-2">
+          <div>
+            <label for="directorRunoffFirst">Primo artista</label>
+            <select id="directorRunoffFirst"></select>
+          </div>
+          <div>
+            <label for="directorRunoffSecond">Secondo artista</label>
+            <select id="directorRunoffSecond"></select>
+          </div>
+        </div>
+
+        <div class="control-actions">
+          <button id="directorRunoffStart" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">⚖</span>
+            <span>Avvia<br />ballottaggio</span>
+          </button>
+          <button id="directorRunoffClose" class="button button-danger" type="button">
+            <span class="btn-icon" aria-hidden="true">⏹</span>
+            <span>Chiudi<br />ballottaggio</span>
+          </button>
+        </div>
+
+        <p id="directorRunoffStatus">Nessun ballottaggio attivo.</p>
+        <div id="directorRunoffResults"></div>
+        <p id="directorRunoffFeedback"></p>
       </section>
 
       <section class="card">
@@ -175,12 +204,6 @@
           </div>
           <div class="scene-bubble">E tutto!</div>
           <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
-        </div>
-        <div id="directorWaitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
-          <div class="waiting-loader" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </div>
-          <p id="directorWaitingText" class="waiting-text">In attesa apertura votazione...</p>
         </div>
         <p id="liveCount">Voti totali: 0</p>
         <p id="liveAverage">Media totale: 0</p>
@@ -277,6 +300,11 @@
       const cancelEditBtn = document.getElementById('cancelEditBtn');
       const usersFeedback = document.getElementById('usersFeedback');
       const usersTableBody = document.getElementById('usersTableBody');
+      const directorRunoffFirst = document.getElementById('directorRunoffFirst');
+      const directorRunoffSecond = document.getElementById('directorRunoffSecond');
+      const directorRunoffStatus = document.getElementById('directorRunoffStatus');
+      const directorRunoffResults = document.getElementById('directorRunoffResults');
+      const directorRunoffFeedback = document.getElementById('directorRunoffFeedback');
 
       let lastKnownLineupId = null;
       let hasOpenedCurrentPerformance = false;
@@ -418,13 +446,61 @@
       function renderLineup(payload) {
         const lineup = payload.lineup || [];
         lineupSelect.innerHTML = '';
+        directorRunoffFirst.innerHTML = '';
+        directorRunoffSecond.innerHTML = '';
 
         lineup.forEach((row) => {
           const option = document.createElement('option');
           option.value = String(row.id);
-          option.textContent = `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
+          const label = `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
+          option.textContent = label;
           lineupSelect.appendChild(option);
+
+          const firstOption = document.createElement('option');
+          firstOption.value = String(row.id);
+          firstOption.textContent = label;
+          directorRunoffFirst.appendChild(firstOption);
+
+          const secondOption = document.createElement('option');
+          secondOption.value = String(row.id);
+          secondOption.textContent = label;
+          directorRunoffSecond.appendChild(secondOption);
         });
+
+        if (lineup.length > 1) {
+          directorRunoffSecond.selectedIndex = 1;
+        }
+      }
+
+      function renderDirectorRunoff(state) {
+        if (!state || !state.hasActiveRunoff) {
+          directorRunoffStatus.textContent = 'Nessun ballottaggio attivo.';
+          directorRunoffResults.innerHTML = '';
+          return;
+        }
+
+        directorRunoffStatus.textContent = state.isOpenForVoting
+          ? 'Ballottaggio attivo e aperto al voto.'
+          : 'Ballottaggio chiuso.';
+
+        directorRunoffResults.innerHTML = (state.artists || [])
+          .map((artist) =>
+            `<p><strong>${artist.artistName}</strong>${artist.performanceName ? ` - ${artist.performanceName}` : ''}<br/>` +
+            `Giuria: ${artist.votes.judge} | Pubblico: ${artist.votes.public} | Totale: ${artist.votes.total}</p>`
+          )
+          .join('');
+      }
+
+      async function loadRunoffStateForDirector() {
+        const response = await fetch('/api/runoff/state');
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          directorRunoffFeedback.textContent = data.error || 'Errore caricamento stato ballottaggio.';
+          return;
+        }
+
+        renderDirectorRunoff(data);
       }
 
       function renderLive(payload) {
@@ -484,9 +560,6 @@
           directorWaitingWrap.style.display = 'none';
         } else {
           directorWaitingWrap.style.display = '';
-          directorWaitingText.textContent = artist
-            ? 'In attesa riapertura votazione...'
-            : 'In attesa attivazione esibizione...';
         }
 
         liveCount.textContent = `Voti totali: ${stats.total.count || 0}`;
@@ -508,11 +581,6 @@
       }
 
       document.getElementById('startShow').addEventListener('click', async () => {
-        if (hasActivePerformance) {
-          directorFeedback.textContent = 'Lo spettacolo e gia avviato: termina o passa al prossimo artista.';
-          return;
-        }
-
         const selected = Number(lineupSelect.value);
         const fallback = Number((lineupSelect.options[0] && lineupSelect.options[0].value) || 0);
         const lineupId = selected || fallback;
@@ -525,7 +593,7 @@
         const response = await fetch('/api/lineup/activate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineupId })
+          body: JSON.stringify({ lineupId, skipIntro: true })
         });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok
@@ -533,23 +601,25 @@
           : data.error || 'Errore avvio spettacolo.';
       });
 
-      document.getElementById('startVoting').addEventListener('click', async () => {
-        const lineupId = Number(lineupSelect.value);
+      document.getElementById('startShowWithVoting').addEventListener('click', async () => {
+        const selected = Number(lineupSelect.value);
+        const fallback = Number((lineupSelect.options[0] && lineupSelect.options[0].value) || 0);
+        const lineupId = selected || fallback;
 
         if (!lineupId) {
-          directorFeedback.textContent = 'Seleziona un artista in lineup.';
+          directorFeedback.textContent = 'Nessun artista in lineup disponibile per avviare lo spettacolo.';
           return;
         }
 
         const response = await fetch('/api/lineup/activate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineupId })
+          body: JSON.stringify({ lineupId, openVoting: true })
         });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok
-          ? data.message || 'Esibizione avviata in pausa.'
-          : data.error || 'Errore avvio esibizione.';
+          ? data.message || 'Esibizione e votazione avviate.'
+          : data.error || 'Errore avvio esibizione e votazione.';
       });
 
       document.getElementById('pauseVoting').addEventListener('click', async () => {
@@ -624,6 +694,38 @@
         window.location.href = '/runoff-manage.html';
       });
 
+      document.getElementById('directorRunoffStart').addEventListener('click', async () => {
+        const firstLineupId = Number(directorRunoffFirst.value);
+        const secondLineupId = Number(directorRunoffSecond.value);
+
+        const response = await fetch('/api/runoff/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firstLineupId, secondLineupId })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        directorRunoffFeedback.textContent = response.ok
+          ? data.message || 'Ballottaggio avviato.'
+          : data.error || 'Errore avvio ballottaggio.';
+
+        if (response.ok) {
+          renderDirectorRunoff(data.state);
+        }
+      });
+
+      document.getElementById('directorRunoffClose').addEventListener('click', async () => {
+        const response = await fetch('/api/runoff/close', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorRunoffFeedback.textContent = response.ok
+          ? data.message || 'Ballottaggio chiuso.'
+          : data.error || 'Errore chiusura ballottaggio.';
+
+        if (response.ok) {
+          renderDirectorRunoff(data.state);
+        }
+      });
+
       document.getElementById('openQrAccess').addEventListener('click', () => {
         window.location.href = '/qr-access.html';
       });
@@ -634,6 +736,10 @@
       socket.on('artist:changed', (payload) => renderLive(payload));
       socket.on('voting:closed', (payload) => renderLive(payload));
       socket.on('vote:updated', (payload) => renderLive(payload));
+      socket.on('runoff:state', (payload) => renderDirectorRunoff(payload));
+      socket.on('runoff:started', (payload) => renderDirectorRunoff(payload));
+      socket.on('runoff:closed', (payload) => renderDirectorRunoff(payload));
+      socket.on('runoff:vote-updated', (payload) => renderDirectorRunoff(payload));
 
       cancelEditBtn.addEventListener('click', () => {
         clearUserForm();
@@ -690,6 +796,7 @@
 
         clearUserForm();
         await loadLineup();
+        await loadRunoffStateForDirector();
         await loadUsers();
       })();
     </script>

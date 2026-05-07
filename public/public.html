@@ -26,6 +26,14 @@
             <div class="leg left"></div>
             <div class="leg right"></div>
           </div>
+          <div class="scene-singer-second">
+            <div class="head"></div>
+            <div class="body"></div>
+            <div class="arm left"></div>
+            <div class="arm right"></div>
+            <div class="leg left"></div>
+            <div class="leg right"></div>
+          </div>
           <div class="scene-mic">
             <span class="mic-head"></span>
             <span class="mic-stand"></span>
@@ -161,34 +169,45 @@
           return;
         }
 
-        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
+        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete', 'show-state-runoff');
+
+        if (runoffState && runoffState.hasActiveRunoff) {
+          showScene.classList.add('show-state-runoff');
+          sceneCaption.textContent = 'Ballottaggio: due artisti a confronto.';
+          return;
+        }
 
         if (allVotesCompleted) {
           showScene.classList.add('show-state-complete');
           sceneCaption.textContent = 'Show concluso. E tutto!';
+          console.log('[Pausa Debug] CSS aggiunto: show-state-complete');
           return;
         }
 
         if (hasActivePerf && isOpenForVoting) {
           showScene.classList.add('show-state-open');
           sceneCaption.textContent = "L'artista si sta esibendo.";
+          console.log('[Pausa Debug] CSS aggiunto: show-state-open');
           return;
         }
 
         if (hasActivePerf && !isOpenForVoting && !sessionHasBeenOpened) {
           showScene.classList.add('show-state-intro');
           sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
+          console.log('[Pausa Debug] CSS aggiunto: show-state-intro');
           return;
         }
 
         if (hasActivePerf && !isOpenForVoting) {
           showScene.classList.add('show-state-paused');
           sceneCaption.textContent = 'Pausa: microfono in attesa.';
+          console.log('[Pausa Debug] CSS aggiunto: show-state-paused');
           return;
         }
 
         showScene.classList.add('show-state-closed');
         sceneCaption.textContent = 'Tende chiuse. In attesa.';
+        console.log('[Pausa Debug] CSS aggiunto: show-state-closed');
       }
 
       async function refreshVoteAvailability() {
@@ -243,23 +262,25 @@
         isPaused = paused;
         currentLineupId = payload.currentLineupId || null;
 
-        artistLabel.textContent = hasActivePerf && sessionHasBeenOpened ? `Artista in esibizione: ${artist}` : '';
-        artistLabel.style.display = hasActivePerf && sessionHasBeenOpened ? '' : 'none';
-        songLabel.textContent = hasActivePerf && sessionHasBeenOpened && song ? `Nome esibizione: ${song}` : '';
-        songLabel.style.display = hasActivePerf && sessionHasBeenOpened && song ? '' : 'none';
+        console.log('[Pausa Debug] Payload ricevuto:', { hasActivePerf, isOpenForVoting, isPaused, sessionHasBeenOpened });
+
+        // Nascondi nomi se è attivo un ballottaggio
+        const hasRunoff = runoffState && runoffState.hasActiveRunoff;
+        artistLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? '' : 'none';
+        songLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? `Nome esibizione: ${song}` : '';
+        songLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? '' : 'none';
 
         if (!hasActivePerf) {
-          showScene.style.display = 'none';
           voteSection.style.display = 'none';
           votedSection.style.display = 'none';
           feedback.textContent = '';
           selectedScore = null;
           document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
-        } else {
-          showScene.style.display = '';
         }
 
         refreshVoteAvailability();
+        updateShowSceneState();
         
         // Mostra il box di attesa se in pausa iniziale (prima apertura votazione)
         if (hasActivePerf && !sessionHasBeenOpened) {
@@ -273,10 +294,14 @@
         if (!runoffState || !runoffState.hasActiveRunoff) {
           runoffSection.style.display = 'none';
           runoffFeedback.textContent = '';
+          allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
           return;
         }
 
         runoffSection.style.display = '';
+        artistLabel.style.display = 'none';
+        songLabel.style.display = 'none';
+        allDoneMessage.style.display = 'none';
 
         const voterName = getOrCreateDeviceId();
         let hasVoted = false;
@@ -323,25 +348,30 @@
         renderState(payload);
       });
       socket.on('voting:closed', (payload) => renderState(payload));
+      socket.on('voting:paused', (payload) => renderState(payload));
       socket.on('votes:cleared', (payload) => {
         feedback.textContent = '';
         renderState(payload);
       });
       socket.on('runoff:state', async (payload) => {
         runoffState = payload;
+        updateShowSceneState();
         await refreshRunoffSection();
       });
       socket.on('runoff:started', async (payload) => {
         runoffFeedback.textContent = '';
         runoffState = payload;
+        updateShowSceneState();
         await refreshRunoffSection();
       });
       socket.on('runoff:closed', async (payload) => {
         runoffState = payload;
+        updateShowSceneState();
         await refreshRunoffSection();
       });
       socket.on('runoff:vote-updated', async (payload) => {
         runoffState = payload;
+        updateShowSceneState();
         await refreshRunoffSection();
       });
 
