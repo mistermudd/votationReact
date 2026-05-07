@@ -13,6 +13,30 @@
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
+          <div class="scene-light"></div>
+          <div class="scene-stage"></div>
+          <div class="scene-curtain left"></div>
+          <div class="scene-curtain right"></div>
+          <div class="scene-singer">
+            <div class="head"></div>
+            <div class="body"></div>
+            <div class="arm left"></div>
+            <div class="arm right"></div>
+            <div class="leg left"></div>
+            <div class="leg right"></div>
+          </div>
+          <div class="scene-mic">
+            <span class="mic-head"></span>
+            <span class="mic-stand"></span>
+          </div>
+          <div class="scene-mascot">
+            <div class="head"></div>
+            <div class="body"></div>
+          </div>
+          <div class="scene-bubble">E tutto!</div>
+          <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
+        </div>
         <div id="waitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
           <div class="waiting-loader" aria-hidden="true">
             <span></span><span></span><span></span>
@@ -52,6 +76,8 @@
       const artistLabel = document.getElementById('artistLabel');
       const songLabel = document.getElementById('songLabel');
       const statusChip = document.getElementById('statusChip');
+      const showScene = document.getElementById('showScene');
+      const sceneCaption = document.getElementById('sceneCaption');
       const waitingWrap = document.getElementById('waitingWrap');
       const waitingText = document.getElementById('waitingText');
       const scoreButtons = document.getElementById('scoreButtons');
@@ -102,6 +128,35 @@
         node.classList.add('flash-success');
       }
 
+      function updateShowSceneState() {
+        if (!showScene) {
+          return;
+        }
+
+        showScene.classList.remove('show-state-open', 'show-state-paused', 'show-state-closed', 'show-state-complete');
+
+        if (allVotesCompleted) {
+          showScene.classList.add('show-state-complete');
+          sceneCaption.textContent = 'Show concluso. E tutto!';
+          return;
+        }
+
+        if (hasActivePerf && isOpenForVoting) {
+          showScene.classList.add('show-state-open');
+          sceneCaption.textContent = 'Il cantante si sta esibendo.';
+          return;
+        }
+
+        if (hasActivePerf && !isOpenForVoting) {
+          showScene.classList.add('show-state-paused');
+          sceneCaption.textContent = 'Pausa: microfono in attesa.';
+          return;
+        }
+
+        showScene.classList.add('show-state-closed');
+        sceneCaption.textContent = 'Tende chiuse. In attesa.';
+      }
+
       async function refreshVoteAvailability() {
         const baseCanVote = !allVotesCompleted && isOpenForVoting && Boolean(currentArtist);
         let alreadyVoted = false;
@@ -120,6 +175,7 @@
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
+        updateShowSceneState();
 
         if (allVotesCompleted) {
           waitingWrap.style.display = 'none';
