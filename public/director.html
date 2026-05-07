@@ -59,7 +59,7 @@
     <div class="container fade-in">
       <section class="hero">
         <h1><span class="page-icon">&#127909;</span> Pannello Regia</h1>
-        <p>Da qui avvii la votazione dell'artista in scaletta.</p>
+        <p>Da qui avvii prima l'esibizione e poi apri la votazione quando vuoi.</p>
       </section>
 
       <section class="card">
@@ -70,7 +70,7 @@
         <div class="control-actions">
           <button id="startVoting" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">▶</span>
-            <span>Inizia<br />esibizione</span>
+            <span>Inizia<br />esibizione (pausa)</span>
           </button>
           <button id="pauseVoting" class="button button-secondary" type="button">
             <span class="btn-icon" aria-hidden="true">⏸</span>
@@ -78,7 +78,7 @@
           </button>
           <button id="resumeVoting" class="button button-secondary" type="button">
             <span class="btn-icon" aria-hidden="true">⏯</span>
-            <span>Riprendi<br />votazione</span>
+            <span>Apri / Riprendi<br />votazione</span>
           </button>
           <button id="nextAuto" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">⏭</span>
@@ -86,7 +86,7 @@
           </button>
           <button id="closeVoting" class="button button-danger" type="button">
             <span class="btn-icon" aria-hidden="true">⏹</span>
-            <span>Termina<br />esibizione</span>
+            <span>Chiudi<br />votazione/esibizione</span>
           </button>
           <button id="completeVoting" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">✅</span>
@@ -112,7 +112,8 @@
 
       <section class="card">
         <h2>Stato live</h2>
-        <p id="liveArtist">Nessun artista selezionato.</p>
+        <p id="liveArtist" class="performance-artist">Nessun artista selezionato.</p>
+        <p id="liveSong" class="performance-song" style="display: none;"></p>
         <p id="liveStatus">Votazione chiusa.</p>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
           <div class="scene-light"></div>
@@ -131,9 +132,34 @@
             <span class="mic-head"></span>
             <span class="mic-stand"></span>
           </div>
+          <div class="scene-band" aria-hidden="true">
+            <div class="scene-player left">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="guitar"></div>
+            </div>
+            <div class="scene-player right">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="drum"></div>
+              <div class="drum-stick s1"></div>
+              <div class="drum-stick s2"></div>
+            </div>
+          </div>
           <div class="scene-mascot">
             <div class="head"></div>
             <div class="body"></div>
+          </div>
+          <div class="scene-notes" aria-hidden="true">
+            <span class="scene-note n1">♪</span>
+            <span class="scene-note n2">♫</span>
+            <span class="scene-note n3">♬</span>
+            <span class="scene-note n4">♪</span>
+            <span class="scene-note n5">♫</span>
           </div>
           <div class="scene-bubble">E tutto!</div>
           <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
@@ -216,6 +242,7 @@
       const socket = io();
       const lineupSelect = document.getElementById('lineupSelect');
       const liveArtist = document.getElementById('liveArtist');
+      const liveSong = document.getElementById('liveSong');
       const liveStatus = document.getElementById('liveStatus');
       const showScene = document.getElementById('showScene');
       const sceneCaption = document.getElementById('sceneCaption');
@@ -240,6 +267,7 @@
       const usersTableBody = document.getElementById('usersTableBody');
 
       let lastKnownLineupId = null;
+      let hasOpenedCurrentPerformance = false;
       let lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
       let authRole = null;
       const roleLabels = { gestione: 'Regia', regia: 'Giudice' };
@@ -388,6 +416,7 @@
 
       function renderLive(payload) {
         const artist = payload.currentArtist || '';
+        const song = payload.currentSong || '';
         const open = Boolean(payload.isOpenForVoting);
         const paused = Boolean(payload.isPaused);
         const completed = Boolean(payload.allVotesCompleted);
@@ -398,36 +427,44 @@
         if (lineupId && lineupId !== lastKnownLineupId) {
           lastKnownLineupId = lineupId;
           lastKnownStats = incomingStats;
+          hasOpenedCurrentPerformance = false;
         } else if (lineupId) {
           lastKnownStats = incomingStats;
+        }
+
+        if (lineupId && open) {
+          hasOpenedCurrentPerformance = true;
         }
         const stats = lastKnownStats;
 
         liveArtist.textContent = artist
           ? `Artista corrente: ${artist}`
           : 'Nessun artista selezionato.';
-        liveStatus.textContent = completed
-          ? 'Tutte le votazioni sono state effettuate.'
-          : open
-            ? 'Votazione aperta.'
-            : paused
-              ? 'Votazione in pausa.'
-              : 'Votazione chiusa.';
+        liveSong.textContent = song ? `Esibizione: ${song}` : '';
+        liveSong.style.display = song ? '' : 'none';
 
-        showScene.classList.remove('show-state-open', 'show-state-paused', 'show-state-closed', 'show-state-complete');
+        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
 
         if (completed) {
           showScene.classList.add('show-state-complete');
           sceneCaption.textContent = 'Show concluso. E tutto!';
+          liveStatus.textContent = 'Tutte le votazioni sono state effettuate.';
         } else if (open) {
           showScene.classList.add('show-state-open');
-          sceneCaption.textContent = 'Il cantante si sta esibendo.';
-        } else if (artist) {
+          sceneCaption.textContent = "L'artista si sta esibendo.";
+          liveStatus.textContent = 'Votazione aperta.';
+        } else if (artist && !hasOpenedCurrentPerformance) {
+          showScene.classList.add('show-state-intro');
+          sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
+          liveStatus.textContent = 'Inizio spettacolo in pausa: apertura tende.';
+        } else if (artist && paused) {
           showScene.classList.add('show-state-paused');
           sceneCaption.textContent = 'Pausa: microfono in attesa.';
+          liveStatus.textContent = 'Votazione in pausa.';
         } else {
           showScene.classList.add('show-state-closed');
           sceneCaption.textContent = 'Tende chiuse. In attesa.';
+          liveStatus.textContent = 'Votazione chiusa.';
         }
 
         if (completed || open) {
@@ -460,7 +497,7 @@
         });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok
-          ? data.message || 'Esibizione avviata.'
+          ? data.message || 'Esibizione avviata in pausa.'
           : data.error || 'Errore avvio esibizione.';
       });
 
@@ -476,7 +513,7 @@
         const response = await fetch('/api/performance/resume', { method: 'POST' });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok
-          ? data.message || 'Votazione ripresa.'
+          ? data.message || 'Votazione aperta.'
           : data.error || 'Errore durante la ripresa della votazione.';
       });
 

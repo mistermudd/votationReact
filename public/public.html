@@ -10,9 +10,9 @@
     <div class="container fade-in">
       <section class="hero">
         <h1><span class="page-icon">&#127881;</span> Voto Pubblico</h1>
-        <p id="artistLabel">In attesa dell'artista...</p>
-        <p id="songLabel"></p>
-        <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <p id="artistLabel" class="performance-artist">In attesa dell'artista...</p>
+        <p id="songLabel" class="performance-song" style="display: none;"></p>
+        <span id="statusChip" class="status-chip status-closed" style="display: none;">Votazione chiusa</span>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
           <div class="scene-light"></div>
           <div class="scene-stage"></div>
@@ -30,9 +30,34 @@
             <span class="mic-head"></span>
             <span class="mic-stand"></span>
           </div>
+          <div class="scene-band" aria-hidden="true">
+            <div class="scene-player left">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="guitar"></div>
+            </div>
+            <div class="scene-player right">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="drum"></div>
+              <div class="drum-stick s1"></div>
+              <div class="drum-stick s2"></div>
+            </div>
+          </div>
           <div class="scene-mascot">
             <div class="head"></div>
             <div class="body"></div>
+          </div>
+          <div class="scene-notes" aria-hidden="true">
+            <span class="scene-note n1">♪</span>
+            <span class="scene-note n2">♫</span>
+            <span class="scene-note n3">♬</span>
+            <span class="scene-note n4">♪</span>
+            <span class="scene-note n5">♫</span>
           </div>
           <div class="scene-bubble">E tutto!</div>
           <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
@@ -100,9 +125,12 @@
       let currentLineupId = null;
       let currentArtist = '';
       let isOpenForVoting = false;
+      let isPaused = false;
       let hasActivePerf = false;
       let allVotesCompleted = false;
       let runoffState = null;
+      let sceneLineupId = null;
+      let hasOpenedCurrentPerformance = false;
 
       function escapeHtml(value) {
         return String(value)
@@ -133,7 +161,7 @@
           return;
         }
 
-        showScene.classList.remove('show-state-open', 'show-state-paused', 'show-state-closed', 'show-state-complete');
+        showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
 
         if (allVotesCompleted) {
           showScene.classList.add('show-state-complete');
@@ -143,7 +171,13 @@
 
         if (hasActivePerf && isOpenForVoting) {
           showScene.classList.add('show-state-open');
-          sceneCaption.textContent = 'Il cantante si sta esibendo.';
+          sceneCaption.textContent = "L'artista si sta esibendo.";
+          return;
+        }
+
+        if (hasActivePerf && !isOpenForVoting && !hasOpenedCurrentPerformance) {
+          showScene.classList.add('show-state-intro');
+          sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
           return;
         }
 
@@ -209,14 +243,25 @@
         const artist = payload.currentArtist || '';
         const song = payload.currentSong || '';
         const open = Boolean(payload.isOpenForVoting);
+        const paused = Boolean(payload.isPaused);
         hasActivePerf = Boolean(payload.hasActivePerformance);
         allVotesCompleted = Boolean(payload.allVotesCompleted);
         currentArtist = artist;
         isOpenForVoting = open;
+        isPaused = paused;
         currentLineupId = payload.currentLineupId || null;
+
+        if (currentLineupId !== sceneLineupId) {
+          sceneLineupId = currentLineupId;
+          hasOpenedCurrentPerformance = false;
+        }
+        if (currentLineupId && isOpenForVoting) {
+          hasOpenedCurrentPerformance = true;
+        }
 
         artistLabel.textContent = artist ? `Artista in esibizione: ${artist}` : "In attesa dell'artista...";
         songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
+        songLabel.style.display = song ? '' : 'none';
 
         if (!hasActivePerf) {
           voteSection.style.display = 'none';

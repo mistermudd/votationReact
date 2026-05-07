@@ -1033,7 +1033,7 @@ function getAuthenticatedJudgeIdentity(req) {
   return { uniqueKey, displayName };
 }
 
-async function startPerformanceByLineupId(lineupId) {
+async function startPerformanceByLineupId(lineupId, { openVoting = true } = {}) {
   allVotesCompleted = false;
 
   const lineupResult = await pool.query(
@@ -1047,7 +1047,7 @@ async function startPerformanceByLineupId(lineupId) {
   }
 
   await closeAnyActiveSession();
-  await pool.query('INSERT INTO sessions (lineup_id, is_open) VALUES ($1, TRUE)', [lineupId]);
+  await pool.query('INSERT INTO sessions (lineup_id, is_open) VALUES ($1, $2)', [lineupId, Boolean(openVoting)]);
 
   return emitState('artist:changed');
 }
@@ -1231,12 +1231,12 @@ app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), async (req
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const payload = await startPerformanceByLineupId(lineupId);
+  const payload = await startPerformanceByLineupId(lineupId, { openVoting: false });
   if (!payload) {
     return res.status(404).json({ error: 'lineupId non trovato' });
   }
 
-  return res.status(200).json({ message: 'Esibizione attivata', state: payload });
+  return res.status(200).json({ message: 'Esibizione attivata, votazione in pausa', state: payload });
 });
 
 app.post('/api/performance/start', requireRoles(['admin']), async (req, res) => {
