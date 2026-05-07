@@ -148,6 +148,7 @@ const ROLE_LABELS = {
 };
 
 let allVotesCompleted = false;
+let currentSessionHasBeenOpenedForVoting = false;
 
 function parseBasicAuth(req) {
   const auth = String(req.headers.authorization || '');
@@ -850,6 +851,7 @@ async function buildStatePayload() {
     hasActivePerformance: true,
     isOpenForVoting: Boolean(session.is_open),
     isPaused: !Boolean(session.is_open),
+    sessionHasBeenOpened: currentSessionHasBeenOpenedForVoting,
     allVotesCompleted,
     nextLineup: next
       ? {
@@ -1033,8 +1035,9 @@ function getAuthenticatedJudgeIdentity(req) {
   return { uniqueKey, displayName };
 }
 
-async function startPerformanceByLineupId(lineupId, { openVoting = true } = {}) {
+async function startPerformanceByLineupId(lineupId, { openVoting = true, skipIntro = false } = {}) {
   allVotesCompleted = false;
+  currentSessionHasBeenOpenedForVoting = Boolean(openVoting) || Boolean(skipIntro);
 
   const lineupResult = await pool.query(
     `SELECT id, artist_name, song_title, performance_order FROM lineup WHERE id = $1 LIMIT 1`,
@@ -1226,12 +1229,13 @@ app.post('/api/artist', requireRoles(['admin']), async (req, res) => {
 
 app.post('/api/lineup/activate', requireRoles(['gestione', 'admin']), async (req, res) => {
   const lineupId = Number(req.body.lineupId);
+  const skipIntro = Boolean(req.body.skipIntro);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const payload = await startPerformanceByLineupId(lineupId, { openVoting: false });
+  const payload = await startPerformanceByLineupId(lineupId, { openVoting: false, skipIntro });
   if (!payload) {
     return res.status(404).json({ error: 'lineupId non trovato' });
   }
@@ -1273,6 +1277,7 @@ app.post('/api/performance/pause', requireRoles(['gestione', 'admin']), async (_
 
 app.post('/api/performance/resume', requireRoles(['gestione', 'admin']), async (_req, res) => {
   allVotesCompleted = false;
+  currentSessionHasBeenOpenedForVoting = true;
   const active = await getActiveSession();
 
   if (!active) {
@@ -1604,6 +1609,13 @@ app.post('/api/performance/reset-state', requireRoles(['gestione', 'admin']), as
   await closeAnyActiveSession();
   const payload = await emitState('performance:reset');
   return res.status(200).json({ message: 'Stato spettacolo ripulito', state: payload });
+});
+
+app.post('/api/performance/intermission', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  currentSessionHasBeenOpenedForVoting = false;
+  await closeAnyActiveSession();
+  const payload = await emitState('performance:intermission');
+  return res.status(200).json({ message: 'Pausa tra artisti', state: payload });
 });
 
 app.get('/api/admin/export-lineup', requireRoles(['admin']), async (_req, res) => {

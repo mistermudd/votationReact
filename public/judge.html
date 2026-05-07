@@ -70,7 +70,6 @@
           <div class="waiting-loader" aria-hidden="true">
             <span></span><span></span><span></span>
           </div>
-          <p id="waitingText" class="waiting-text">In attesa apertura votazione...</p>
         </div>
         <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <div id="judgeNameBox" style="margin-top: 16px;">
@@ -202,7 +201,7 @@
         node.classList.add('flash-success');
       }
 
-      function updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted) {
+      function updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted, sessionHasBeenOpened) {
         if (!showScene) {
           return;
         }
@@ -221,7 +220,7 @@
           return;
         }
 
-        if (hasActivePerformance && !open && !hasOpenedCurrentPerformance) {
+        if (hasActivePerformance && !open && !sessionHasBeenOpened) {
           showScene.classList.add('show-state-intro');
           sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
           return;
@@ -267,22 +266,15 @@
         const song = latestState.currentSong;
         const hasActivePerformance = latestState.hasActivePerformance;
         const allVotesCompleted = latestState.allVotesCompleted;
+        const sessionHasBeenOpened = Boolean(latestState.sessionHasBeenOpened);
         currentLineupId = latestState.currentLineupId;
-
-        if (currentLineupId !== sceneLineupId) {
-          sceneLineupId = currentLineupId;
-          hasOpenedCurrentPerformance = false;
-        }
-        if (currentLineupId && open) {
-          hasOpenedCurrentPerformance = true;
-        }
 
         const alreadyVoted = hasAlreadyVotedCurrentPerformance;
 
-        artistLabel.textContent = hasActivePerformance ? `Artista in esibizione: ${artist}` : '';
-        artistLabel.style.display = hasActivePerformance ? '' : 'none';
-        songLabel.textContent = hasActivePerformance && song ? `Nome esibizione: ${song}` : '';
-        songLabel.style.display = hasActivePerformance && song ? '' : 'none';
+        artistLabel.textContent = hasActivePerformance && sessionHasBeenOpened ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.style.display = hasActivePerformance && sessionHasBeenOpened ? '' : 'none';
+        songLabel.textContent = hasActivePerformance && sessionHasBeenOpened && song ? `Nome esibizione: ${song}` : '';
+        songLabel.style.display = hasActivePerformance && sessionHasBeenOpened && song ? '' : 'none';
 
         canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;
         voteSection.style.display = (hasActivePerformance && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
@@ -290,7 +282,7 @@
         allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
-        updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted);
+        updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted, sessionHasBeenOpened);
 
         waitingWrap.style.display = 'none';
 

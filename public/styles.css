@@ -684,10 +684,11 @@ select {
 }
 
 .scene-notes {
-  right: 16px;
+  left: 50%;
   top: 20px;
   width: 76px;
   height: 90px;
+  transform: translateX(-50%);
   z-index: 2;
 }
 
@@ -818,8 +819,42 @@ select {
 }
 
 .show-state-intro .scene-light,
+.show-state-intro .scene-singer,
+.show-state-intro .scene-band,
 .show-state-intro .scene-mic {
   opacity: 1;
+}
+
+.show-state-intro .scene-singer {
+  animation: singerBounce 1.2s ease-in-out infinite;
+}
+
+.show-state-intro .scene-singer .arm.left {
+  animation: singArmLeft 1.1s ease-in-out infinite;
+}
+
+.show-state-intro .scene-singer .arm.right {
+  animation: singArmRight 1.1s ease-in-out infinite;
+}
+
+.show-state-intro .scene-player.left {
+  animation: bandGroove 1.15s ease-in-out infinite;
+}
+
+.show-state-intro .scene-player.right {
+  animation: bandGroove 1.25s ease-in-out infinite 0.12s;
+}
+
+.show-state-intro .scene-player.left .guitar {
+  animation: guitarStrum 0.95s ease-in-out infinite;
+}
+
+.show-state-intro .scene-player.right .drum-stick.s1 {
+  animation: drumHitA 0.8s ease-in-out infinite;
+}
+
+.show-state-intro .scene-player.right .drum-stick.s2 {
+  animation: drumHitB 0.8s ease-in-out infinite 0.16s;
 }
 
 .show-state-intro .scene-mic {

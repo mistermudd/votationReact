@@ -100,6 +100,10 @@
             <span class="btn-icon" aria-hidden="true">🧹</span>
             <span>Pulisci stato<br />spettacolo</span>
           </button>
+          <button id="intermission" class="button button-secondary" type="button">
+            <span class="btn-icon" aria-hidden="true">⏸️</span>
+            <span>Pausa tra<br />artisti</span>
+          </button>
         </div>
         <p id="directorFeedback" style="margin-top: 10px;"></p>
       </section>
@@ -430,6 +434,7 @@
         const open = Boolean(payload.isOpenForVoting);
         const paused = Boolean(payload.isPaused);
         const completed = Boolean(payload.allVotesCompleted);
+        const sessionHasBeenOpened = Boolean(payload.sessionHasBeenOpened);
         const lineupId = payload.currentLineupId || null;
         const incomingStats = payload.stats || { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
 
@@ -437,24 +442,19 @@
         if (lineupId && lineupId !== lastKnownLineupId) {
           lastKnownLineupId = lineupId;
           lastKnownStats = incomingStats;
-          hasOpenedCurrentPerformance = false;
         } else if (lineupId) {
           lastKnownStats = incomingStats;
         } else {
           lastKnownLineupId = null;
           lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
-          hasOpenedCurrentPerformance = false;
         }
 
-        if (lineupId && open) {
-          hasOpenedCurrentPerformance = true;
-        }
         const stats = lastKnownStats;
 
-        liveArtist.textContent = hasActivePerformance ? `Artista corrente: ${artist}` : '';
-        liveArtist.style.display = hasActivePerformance ? '' : 'none';
-        liveSong.textContent = hasActivePerformance && song ? `Esibizione: ${song}` : '';
-        liveSong.style.display = hasActivePerformance && song ? '' : 'none';
+        liveArtist.textContent = hasActivePerformance && sessionHasBeenOpened ? `Artista corrente: ${artist}` : '';
+        liveArtist.style.display = hasActivePerformance && sessionHasBeenOpened ? '' : 'none';
+        liveSong.textContent = hasActivePerformance && sessionHasBeenOpened && song ? `Esibizione: ${song}` : '';
+        liveSong.style.display = hasActivePerformance && sessionHasBeenOpened && song ? '' : 'none';
 
         showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
 
@@ -466,7 +466,7 @@
           showScene.classList.add('show-state-open');
           sceneCaption.textContent = "L'artista si sta esibendo.";
           liveStatus.textContent = 'Votazione aperta.';
-        } else if (artist && !hasOpenedCurrentPerformance) {
+        } else if (artist && !sessionHasBeenOpened) {
           showScene.classList.add('show-state-intro');
           sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
           liveStatus.textContent = 'Esibizione attiva senza votazione attiva (inizio spettacolo).';
@@ -525,7 +525,7 @@
         const response = await fetch('/api/lineup/activate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineupId })
+          body: JSON.stringify({ lineupId, skipIntro: true })
         });
         const data = await response.json().catch(() => ({}));
         directorFeedback.textContent = response.ok
@@ -610,6 +610,14 @@
         directorFeedback.textContent = response.ok
           ? data.message || 'Stato spettacolo ripulito.'
           : data.error || 'Errore durante la pulizia dello stato spettacolo.';
+      });
+
+      document.getElementById('intermission').addEventListener('click', async () => {
+        const response = await fetch('/api/performance/intermission', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Pausa tra artisti iniziata.'
+          : data.error || 'Errore durante la pausa tra artisti.';
       });
 
       document.getElementById('openRunoffManage').addEventListener('click', () => {
