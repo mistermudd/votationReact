@@ -199,7 +199,7 @@ Tutte le API protette utilizzano il cookie di sessione `auth_token` oppure HTTP 
 ### Note permessi applicativi
 
 - In menu principale la Regia vede: Conduzione, Lineup, Resoconto, Ballottaggio, QR Accessi, Aggiungi nuovo giudice.
-- In menu principale l'Admin non vede più i link Regia e Pubblico.
+- In menu principale l'Admin visualizza tutti i pulsanti disponibili, incluso Aggiungi nuovo utente.
 - Al login il Giudice viene reindirizzato direttamente a `/judge.html`.
 - Nelle pagine Giudice è presente solo il pulsante Logout (senza Torna indietro).
 

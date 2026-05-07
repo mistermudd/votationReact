@@ -13,6 +13,12 @@
         <p id="artistLabel">In attesa dell'artista...</p>
         <p id="songLabel"></p>
         <span id="statusChip" class="status-chip status-closed">Votazione chiusa</span>
+        <div id="waitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
+          <div class="waiting-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <p id="waitingText" class="waiting-text">In attesa apertura votazione...</p>
+        </div>
         <p id="allDoneMessage" style="display: none; margin-top: 10px;"><strong>Tutte le votazioni sono state effettuate.</strong></p>
         <p id="votedBadge" style="display: none; margin-top: 10px;"><strong>Hai gia votato questa esibizione</strong></p>
       </section>
@@ -46,6 +52,8 @@
       const artistLabel = document.getElementById('artistLabel');
       const songLabel = document.getElementById('songLabel');
       const statusChip = document.getElementById('statusChip');
+      const waitingWrap = document.getElementById('waitingWrap');
+      const waitingText = document.getElementById('waitingText');
       const scoreButtons = document.getElementById('scoreButtons');
       const sendVoteBtn = document.getElementById('sendVoteBtn');
       const voteSection = document.getElementById('voteSection');
@@ -112,6 +120,17 @@
         statusChip.textContent = canVote ? 'Votazione aperta' : 'Votazione non attiva';
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
+
+        if (allVotesCompleted) {
+          waitingWrap.style.display = 'none';
+        } else if (canVote) {
+          waitingWrap.style.display = 'none';
+        } else {
+          waitingWrap.style.display = '';
+          waitingText.textContent = hasActivePerf
+            ? 'In attesa apertura votazione...'
+            : "In attesa della prossima esibizione...";
+        }
 
         voteSection.style.display = (hasActivePerf && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
         votedSection.style.display = (hasActivePerf && alreadyVoted && !allVotesCompleted) ? '' : 'none';

@@ -28,7 +28,7 @@
           <button class="button button-danger" data-role="performance" data-allow="admin" type="button"><span>&#127917;</span> Conduzione</button>
           <button class="button button-primary" data-role="lineup" data-allow="gestione" type="button"><span>&#128203;</span> Lineup</button>
           <button class="button button-secondary" data-role="report" data-allow="gestione" type="button"><span>&#128200;</span> Resoconto</button>
-          <button class="button button-secondary" data-role="manageJudges" data-allow="gestione" type="button"><span>&#128100;</span> Aggiungi nuovo giudice</button>
+          <button id="manageUsersBtn" class="button button-secondary" data-role="manageJudges" data-allow="gestione" type="button"><span>&#128100;</span> Aggiungi nuovo giudice</button>
         </div>
       </section>
     </div>
@@ -37,6 +37,7 @@
     <script>
       const socket = io();
       const roleInfo = document.getElementById('roleInfo');
+      const manageUsersBtn = document.getElementById('manageUsersBtn');
 
       async function applyRoleVisibility() {
         const response = await fetch('/api/auth/me');
@@ -48,11 +49,18 @@
         }
 
         roleInfo.textContent = `Ruolo autenticato: ${data.displayRole || data.role}`;
+        if (manageUsersBtn) {
+          manageUsersBtn.innerHTML = data.role === 'admin'
+            ? '<span>&#128100;</span> Aggiungi nuovo utente'
+            : '<span>&#128100;</span> Aggiungi nuovo giudice';
+        }
 
         document.querySelectorAll('[data-role]').forEach((btn) => {
           const allow = String(btn.getAttribute('data-allow') || '');
           const allowedRoles = allow.split(',').map((item) => item.trim());
-          const isAllowed = allowedRoles.includes('all') || allowedRoles.includes(data.role);
+          const isAllowed = data.role === 'admin'
+            || allowedRoles.includes('all')
+            || allowedRoles.includes(data.role);
           btn.style.display = isAllowed ? '' : 'none';
         });
 

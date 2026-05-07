@@ -114,6 +114,12 @@
         <h2>Stato live</h2>
         <p id="liveArtist">Nessun artista selezionato.</p>
         <p id="liveStatus">Votazione chiusa.</p>
+        <div id="directorWaitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
+          <div class="waiting-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <p id="directorWaitingText" class="waiting-text">In attesa apertura votazione...</p>
+        </div>
         <p id="liveCount">Voti totali: 0</p>
         <p id="liveAverage">Media totale: 0</p>
         <p id="judgeStats">Giudici: 0 voti | media 0</p>
@@ -187,6 +193,8 @@
       const lineupSelect = document.getElementById('lineupSelect');
       const liveArtist = document.getElementById('liveArtist');
       const liveStatus = document.getElementById('liveStatus');
+      const directorWaitingWrap = document.getElementById('directorWaitingWrap');
+      const directorWaitingText = document.getElementById('directorWaitingText');
       const liveCount = document.getElementById('liveCount');
       const liveAverage = document.getElementById('liveAverage');
       const judgeStats = document.getElementById('judgeStats');
@@ -379,6 +387,16 @@
             : paused
               ? 'Votazione in pausa.'
               : 'Votazione chiusa.';
+
+        if (completed || open) {
+          directorWaitingWrap.style.display = 'none';
+        } else {
+          directorWaitingWrap.style.display = '';
+          directorWaitingText.textContent = artist
+            ? 'In attesa riapertura votazione...'
+            : 'In attesa attivazione esibizione...';
+        }
+
         liveCount.textContent = `Voti totali: ${stats.total.count || 0}`;
         liveAverage.textContent = `Media totale: ${stats.total.average || 0}`;
         judgeStats.textContent = `Giudici: ${stats.byRole.judge.count || 0} voti | media ${stats.byRole.judge.average || 0}`;
