@@ -293,14 +293,7 @@
         statusChip.className = `status-chip ${canVote ? 'status-open' : 'status-closed'}`;
         updateShowSceneState(hasActivePerformance, open, paused, allVotesCompleted);
 
-        if (allVotesCompleted || canVote) {
-          waitingWrap.style.display = 'none';
-        } else {
-          waitingWrap.style.display = '';
-          waitingText.textContent = hasActivePerformance
-            ? 'In attesa apertura votazione...'
-            : "In attesa della prossima esibizione...";
-        }
+        waitingWrap.style.display = 'none';
 
         if (!hasActivePerformance) {
           feedback.textContent = '';

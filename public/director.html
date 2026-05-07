@@ -68,6 +68,10 @@
         <select id="lineupSelect"></select>
 
         <div class="control-actions">
+          <button id="startShow" class="button button-primary" type="button">
+            <span class="btn-icon" aria-hidden="true">🎬</span>
+            <span>Avvia<br />spettacolo</span>
+          </button>
           <button id="startVoting" class="button button-primary" type="button">
             <span class="btn-icon" aria-hidden="true">▶</span>
             <span>Inizia<br />esibizione (pausa)</span>
@@ -268,6 +272,7 @@
 
       let lastKnownLineupId = null;
       let hasOpenedCurrentPerformance = false;
+      let hasActivePerformance = false;
       let lastKnownStats = { total: { count: 0, average: 0 }, byRole: { judge: { count: 0, average: 0 }, public: { count: 0, average: 0 } } };
       let authRole = null;
       const roleLabels = { gestione: 'Regia', regia: 'Giudice' };
@@ -417,6 +422,7 @@
       function renderLive(payload) {
         const artist = payload.currentArtist || '';
         const song = payload.currentSong || '';
+        hasActivePerformance = Boolean(payload.hasActivePerformance);
         const open = Boolean(payload.isOpenForVoting);
         const paused = Boolean(payload.isPaused);
         const completed = Boolean(payload.allVotesCompleted);
@@ -456,11 +462,11 @@
         } else if (artist && !hasOpenedCurrentPerformance) {
           showScene.classList.add('show-state-intro');
           sceneCaption.textContent = 'Inizio spettacolo: tende in apertura.';
-          liveStatus.textContent = 'Inizio spettacolo in pausa: apertura tende.';
+          liveStatus.textContent = 'Esibizione attiva senza votazione attiva (inizio spettacolo).';
         } else if (artist && paused) {
           showScene.classList.add('show-state-paused');
           sceneCaption.textContent = 'Pausa: microfono in attesa.';
-          liveStatus.textContent = 'Votazione in pausa.';
+          liveStatus.textContent = 'Esibizione attiva senza votazione attiva (pausa).';
         } else {
           showScene.classList.add('show-state-closed');
           sceneCaption.textContent = 'Tende chiuse. In attesa.';
@@ -481,6 +487,44 @@
         judgeStats.textContent = `Giudici: ${stats.byRole.judge.count || 0} voti | media ${stats.byRole.judge.average || 0}`;
         publicStats.textContent = `Pubblico: ${stats.byRole.public.count || 0} voti | media ${stats.byRole.public.average || 0}`;
       }
+
+      async function loadLineup() {
+        const response = await fetch('/api/lineup');
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          directorFeedback.textContent = data.error || 'Errore caricamento lineup.';
+          return;
+        }
+
+        renderLineup(data);
+      }
+
+      document.getElementById('startShow').addEventListener('click', async () => {
+        if (hasActivePerformance) {
+          directorFeedback.textContent = 'Lo spettacolo e gia avviato: termina o passa al prossimo artista.';
+          return;
+        }
+
+        const selected = Number(lineupSelect.value);
+        const fallback = Number((lineupSelect.options[0] && lineupSelect.options[0].value) || 0);
+        const lineupId = selected || fallback;
+
+        if (!lineupId) {
+          directorFeedback.textContent = 'Nessun artista in lineup disponibile per avviare lo spettacolo.';
+          return;
+        }
+
+        const response = await fetch('/api/lineup/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lineupId })
+        });
+        const data = await response.json().catch(() => ({}));
+        directorFeedback.textContent = response.ok
+          ? data.message || 'Spettacolo avviato in pausa.'
+          : data.error || 'Errore avvio spettacolo.';
+      });
 
       document.getElementById('startVoting').addEventListener('click', async () => {
         const lineupId = Number(lineupSelect.value);
@@ -617,6 +661,7 @@
         }
 
         clearUserForm();
+        await loadLineup();
         await loadUsers();
       })();
     </script>

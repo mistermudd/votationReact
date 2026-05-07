@@ -211,16 +211,7 @@
         allDoneMessage.style.display = allVotesCompleted ? '' : 'none';
         updateShowSceneState();
 
-        if (allVotesCompleted) {
-          waitingWrap.style.display = 'none';
-        } else if (canVote) {
-          waitingWrap.style.display = 'none';
-        } else {
-          waitingWrap.style.display = '';
-          waitingText.textContent = hasActivePerf
-            ? 'In attesa apertura votazione...'
-            : "In attesa della prossima esibizione...";
-        }
+        waitingWrap.style.display = 'none';
 
         voteSection.style.display = (hasActivePerf && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
         votedSection.style.display = (hasActivePerf && alreadyVoted && !allVotesCompleted) ? '' : 'none';

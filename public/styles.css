@@ -753,6 +753,10 @@ select {
   opacity: 1;
 }
 
+.show-state-open .scene-notes {
+  opacity: 1;
+}
+
 .show-state-open .scene-singer {
   animation: singerBounce 1.2s ease-in-out infinite;
 }
@@ -783,6 +787,26 @@ select {
 
 .show-state-open .scene-player.right .drum-stick.s2 {
   animation: drumHitB 0.8s ease-in-out infinite 0.16s;
+}
+
+.show-state-open .scene-note.n1 {
+  animation: noteRiseA 1.8s ease-in-out infinite;
+}
+
+.show-state-open .scene-note.n2 {
+  animation: noteRiseB 2s ease-in-out infinite 0.2s;
+}
+
+.show-state-open .scene-note.n3 {
+  animation: noteRiseA 1.9s ease-in-out infinite 0.28s;
+}
+
+.show-state-open .scene-note.n4 {
+  animation: noteRiseB 2.1s ease-in-out infinite 0.12s;
+}
+
+.show-state-open .scene-note.n5 {
+  animation: noteRiseA 1.85s ease-in-out infinite 0.35s;
 }
 
 .show-state-intro .scene-curtain.left {
