@@ -451,11 +451,10 @@
         }
         const stats = lastKnownStats;
 
-        liveArtist.textContent = artist
-          ? `Artista corrente: ${artist}`
-          : 'Nessun artista selezionato.';
-        liveSong.textContent = song ? `Esibizione: ${song}` : '';
-        liveSong.style.display = song ? '' : 'none';
+        liveArtist.textContent = hasActivePerformance ? `Artista corrente: ${artist}` : '';
+        liveArtist.style.display = hasActivePerformance ? '' : 'none';
+        liveSong.textContent = hasActivePerformance && song ? `Esibizione: ${song}` : '';
+        liveSong.style.display = hasActivePerformance && song ? '' : 'none';
 
         showScene.classList.remove('show-state-open', 'show-state-intro', 'show-state-paused', 'show-state-closed', 'show-state-complete');
 

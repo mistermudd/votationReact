@@ -279,11 +279,10 @@
 
         const alreadyVoted = hasAlreadyVotedCurrentPerformance;
 
-        artistLabel.textContent = artist
-          ? `Artista in esibizione: ${artist}`
-          : "In attesa dell'artista...";
-        songLabel.textContent = song ? `Nome esibizione: ${song}` : '';
-        songLabel.style.display = song ? '' : 'none';
+        artistLabel.textContent = hasActivePerformance ? `Artista in esibizione: ${artist}` : '';
+        artistLabel.style.display = hasActivePerformance ? '' : 'none';
+        songLabel.textContent = hasActivePerformance && song ? `Nome esibizione: ${song}` : '';
+        songLabel.style.display = hasActivePerformance && song ? '' : 'none';
 
         canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;
         voteSection.style.display = (hasActivePerformance && !alreadyVoted && !allVotesCompleted) ? '' : 'none';
