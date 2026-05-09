@@ -156,6 +156,11 @@
         <p id="liveArtist" class="performance-artist">Nessun artista/gruppo selezionato.</p>
         <p id="liveSong" class="performance-song" style="display: none;"></p>
         <p id="liveStatus">Votazione chiusa.</p>
+        <div id="directorWaitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
+          <div class="waiting-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
         <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
           <div class="scene-light"></div>
           <div class="scene-stage"></div>
@@ -211,6 +216,15 @@
         <p id="publicStats">Pubblico: 0 voti | media 0</p>
       </section>
 
+      <section id="adminControls" class="card" style="display: none;">
+        <h2>Controlli Admin</h2>
+        <button id="clearAllDataBtn" class="button button-danger" type="button" style="margin-bottom: 10px;">
+          <span style="font-size: 1.1rem; margin-right: 4px;" aria-hidden="true">🗑</span>
+          Pulisci tutto il DB (esclusi utenti)
+        </button>
+        <p id="adminFeedback" style="color: #8f231b;"></p>
+      </section>
+
       <section id="users" class="card">
         <h2>Gestione utenze</h2>
         <p id="usersRoleInfo" style="margin-top: 0; opacity: 0.75;">Caricamento profilo...</p>
@@ -256,6 +270,7 @@
             <thead>
               <tr>
                 <th>Username</th>
+                <th>Password</th>
                 <th>Nome</th>
                 <th>Cognome</th>
                 <th>Ruolo</th>
@@ -264,7 +279,7 @@
             </thead>
             <tbody id="usersTableBody">
               <tr>
-                <td colspan="5">Nessuna utenza presente.</td>
+                <td colspan="6">Nessuna utenza presente.</td>
               </tr>
             </tbody>
           </table>
@@ -288,6 +303,9 @@
       const judgeStats = document.getElementById('judgeStats');
       const publicStats = document.getElementById('publicStats');
       const directorFeedback = document.getElementById('directorFeedback');
+      const adminControls = document.getElementById('adminControls');
+      const clearAllDataBtn = document.getElementById('clearAllDataBtn');
+      const adminFeedback = document.getElementById('adminFeedback');
       const usersRoleInfo = document.getElementById('usersRoleInfo');
       const userForm = document.getElementById('userForm');
       const userIdInput = document.getElementById('userId');
@@ -358,17 +376,19 @@
 
         const users = Array.isArray(data.users) ? data.users : [];
         if (users.length === 0) {
-          usersTableBody.innerHTML = '<tr><td colspan="5">Nessuna utenza presente.</td></tr>';
+          usersTableBody.innerHTML = '<tr><td colspan="6">Nessuna utenza presente.</td></tr>';
           return;
         }
 
         usersTableBody.innerHTML = users
           .map((user) => {
-            const deleteButton = authRole === 'admin'
+            const canDelete = authRole === 'admin' || (authRole === 'gestione' && user.role === 'regia');
+            const deleteButton = canDelete
               ? ` <button class="button button-danger" data-delete-user-id="${user.id}" type="button">Elimina</button>`
               : '';
             return '<tr>' +
               `<td>${user.username}</td>` +
+              `<td>${user.password}</td>` +
               `<td>${user.first_name}</td>` +
               `<td>${user.last_name}</td>` +
               `<td>${roleLabels[user.role] || user.role}</td>` +
@@ -436,9 +456,14 @@
 
         authRole = data.role;
         fillRoleOptions();
-        usersRoleInfo.textContent = authRole === 'admin'
-          ? 'Come Admin puoi creare e modificare utenze Regia e Giudice.'
-          : 'Come Regia puoi creare e modificare solo utenze Giudice.';
+        
+        if (authRole === 'admin') {
+          adminControls.style.display = '';
+          usersRoleInfo.textContent = 'Come Admin puoi creare e modificare utenze Regia e Giudice.';
+        } else {
+          adminControls.style.display = 'none';
+          usersRoleInfo.textContent = 'Come Regia puoi creare e modificare solo utenze Giudice.';
+        }
 
         return true;
       }
@@ -785,6 +810,35 @@
         if (response.ok) {
           clearUserForm();
           await loadUsers();
+        }
+      });
+
+      clearAllDataBtn.addEventListener('click', async () => {
+        adminFeedback.textContent = '';
+        const confirmed = window.confirm(
+          'Attenzione! Questa azione eliminerà TUTTI i dati dal database tranne gli utenti:\n- Lineup\n- Sessioni\n- Voti\n- Ballottaggi\n\nSei sicuro?'
+        );
+        if (!confirmed) {
+          return;
+        }
+
+        clearAllDataBtn.disabled = true;
+        try {
+          const response = await fetch('/api/admin/clear-all-data', { method: 'POST' });
+          const data = await response.json().catch(() => ({}));
+          adminFeedback.textContent = response.ok
+            ? data.message || 'Database pulito con successo.'
+            : data.error || 'Errore durante la pulizia del database.';
+          
+          if (response.ok) {
+            setTimeout(() => {
+              adminFeedback.textContent = '';
+            }, 3000);
+          }
+        } catch (_error) {
+          adminFeedback.textContent = 'Errore durante la pulizia del database.';
+        } finally {
+          clearAllDataBtn.disabled = false;
         }
       });
 

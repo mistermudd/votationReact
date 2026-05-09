@@ -89,6 +89,16 @@
           </article>
 
           <article class="qr-box">
+            <h3>Giuria</h3>
+            <p>Accesso pagina voto giuria.</p>
+            <div id="giuriaQr" class="qr-target">In attesa di generazione</div>
+            <p class="url-row"><a id="giuriaLink" href="#" target="_blank" rel="noopener"></a></p>
+            <div class="download-row">
+              <button id="downloadGiuriaBtn" class="button button-secondary" type="button" disabled>Scarica QR</button>
+            </div>
+          </article>
+
+          <article class="qr-box">
             <h3>Pubblico</h3>
             <p>Accesso pagina voto pubblico.</p>
             <div id="publicQr" class="qr-target">In attesa di generazione</div>
@@ -97,8 +107,6 @@
               <button id="downloadPublicBtn" class="button button-secondary" type="button" disabled>Scarica QR</button>
             </div>
           </article>
-        </div>
-      </section>
     </div>
 
     <script>
@@ -110,10 +118,13 @@
       const errorText = document.getElementById('errorText');
 
       const regiaQr = document.getElementById('regiaQr');
+      const giuriaQr = document.getElementById('giuriaQr');
       const publicQr = document.getElementById('publicQr');
       const regiaLink = document.getElementById('regiaLink');
+      const giuriaLink = document.getElementById('giuriaLink');
       const publicLink = document.getElementById('publicLink');
       const downloadRegiaBtn = document.getElementById('downloadRegiaBtn');
+      const downloadGiuriaBtn = document.getElementById('downloadGiuriaBtn');
       const downloadPublicBtn = document.getElementById('downloadPublicBtn');
       const DEFAULT_BASE_URL = 'https://votationreact.onrender.com/';
 
@@ -253,18 +264,24 @@
         }
 
         const regiaUrl = joinUrl(normalized, getRegiaPath());
+        const giuriaUrl = joinUrl(normalized, '/runoff-judge.html');
         const pubblicoUrl = joinUrl(normalized, '/public.html');
 
         await renderQr(regiaQr, regiaUrl);
+        await renderQr(giuriaQr, giuriaUrl);
         await renderQr(publicQr, pubblicoUrl);
 
         regiaLink.href = regiaUrl;
         regiaLink.textContent = regiaUrl;
 
+        giuriaLink.href = giuriaUrl;
+        giuriaLink.textContent = giuriaUrl;
+
         publicLink.href = pubblicoUrl;
         publicLink.textContent = pubblicoUrl;
 
         downloadRegiaBtn.disabled = false;
+        downloadGiuriaBtn.disabled = false;
         downloadPublicBtn.disabled = false;
       }
 
@@ -274,12 +291,16 @@
         refreshRegiaDescription();
         errorText.textContent = '';
         regiaQr.textContent = 'In attesa di generazione';
+        giuriaQr.textContent = 'In attesa di generazione';
         publicQr.textContent = 'In attesa di generazione';
         regiaLink.removeAttribute('href');
+        giuriaLink.removeAttribute('href');
         publicLink.removeAttribute('href');
         regiaLink.textContent = '';
+        giuriaLink.textContent = '';
         publicLink.textContent = '';
         downloadRegiaBtn.disabled = true;
+        downloadGiuriaBtn.disabled = true;
         downloadPublicBtn.disabled = true;
       }
 
@@ -292,6 +313,7 @@
       regiaTarget.addEventListener('change', refreshRegiaDescription);
       resetBtn.addEventListener('click', resetAll);
       downloadRegiaBtn.addEventListener('click', () => downloadQrFromTarget(regiaQr, 'qr-accesso-regia.png'));
+      downloadGiuriaBtn.addEventListener('click', () => downloadQrFromTarget(giuriaQr, 'qr-accesso-giuria.png'));
       downloadPublicBtn.addEventListener('click', () => downloadQrFromTarget(publicQr, 'qr-accesso-pubblico.png'));
       refreshRegiaDescription();
       baseUrlInput.value = DEFAULT_BASE_URL;

@@ -555,15 +555,16 @@ app.put('/api/users/:id', requireRoles(['gestione', 'admin']), async (req, res) 
   }
 });
 
-app.delete('/api/users/:id', requireRoles(['admin']), async (req, res) => {
+app.delete('/api/users/:id', requireRoles(['admin', 'gestione']), async (req, res) => {
   const userId = Number(req.params.id);
   if (!Number.isInteger(userId) || userId < 1) {
     return res.status(400).json({ error: 'userId non valido' });
   }
 
+  const accessRole = getAccessRole(req);
   const currentSession = getSessionFromToken(req);
   const targetResult = await pool.query(
-    `SELECT id, username FROM app_users WHERE id = $1 LIMIT 1`,
+    `SELECT id, username, role FROM app_users WHERE id = $1 LIMIT 1`,
     [userId]
   );
   const target = targetResult.rows[0];
@@ -574,6 +575,11 @@ app.delete('/api/users/:id', requireRoles(['admin']), async (req, res) => {
 
   if (currentSession && currentSession.username && currentSession.username === target.username) {
     return res.status(409).json({ error: 'Non puoi cancellare l\'utenza attualmente loggata' });
+  }
+
+  // gestione (regia) può cancellare solo giudici (regia role)
+  if (accessRole === 'gestione' && target.role !== 'regia') {
+    return res.status(403).json({ error: 'Non hai i permessi per cancellare questa utenza' });
   }
 
   const result = await pool.query('DELETE FROM app_users WHERE id = $1', [userId]);
@@ -1177,7 +1183,7 @@ app.put('/api/lineup/:id', requireRoles(['gestione', 'admin']), async (req, res)
   }
 });
 
-app.delete('/api/lineup/:id', requireRoles(['gestione', 'admin']), async (req, res) => {
+app.delete('/api/lineup/:id', async (req, res) => {
   const lineupId = Number(req.params.id);
 
   if (!Number.isInteger(lineupId) || lineupId < 1) {
@@ -1415,8 +1421,66 @@ app.get('/api/judge/vote-status', requireRoles(['regia', 'admin']), async (req, 
   });
 });
 
+app.post('/api/judge/clear-vote', requireRoles(['regia', 'admin']), async (req, res) => {
+  const identity = getAuthenticatedJudgeIdentity(req);
+  if (!identity) {
+    return res.status(401).json({ error: 'Profilo giudice non disponibile' });
+  }
+
+  const lineupId = Number(req.body.lineupId);
+  if (!Number.isInteger(lineupId) || lineupId < 1) {
+    return res.status(400).json({ error: 'lineupId non valido' });
+  }
+
+  await pool.query(
+    'DELETE FROM votes WHERE lineup_id = $1 AND role = $2 AND LOWER(voter_name) = LOWER($3)',
+    [lineupId, 'judge', identity.uniqueKey]
+  );
+
+  return res.status(200).json({ message: 'Voto eliminato' });
+});
+
 app.get('/api/runoff/state', async (_req, res) => {
   res.status(200).json(await buildRunoffState());
+});
+
+app.get('/api/runoff/history', requireRoles(['gestione', 'admin']), async (_req, res) => {
+  const result = await pool.query(
+    `SELECT rs.id, rs.first_lineup_id, rs.second_lineup_id, rs.is_open, rs.created_at, rs.closed_at,
+            rs.first_artist_name, rs.first_song_title, rs.second_artist_name, rs.second_song_title
+     FROM runoff_sessions rs
+     WHERE rs.closed_at IS NOT NULL
+     ORDER BY rs.closed_at DESC`
+  );
+
+  const history = [];
+  for (const session of result.rows) {
+    const counts = await getRunoffVoteCounts(session.id);
+    const firstVotes = counts[session.first_lineup_id] || { judge: 0, public: 0, total: 0 };
+    const secondVotes = counts[session.second_lineup_id] || { judge: 0, public: 0, total: 0 };
+    
+    const winnerLineupId = firstVotes.total === secondVotes.total 
+      ? null 
+      : firstVotes.total > secondVotes.total 
+        ? session.first_lineup_id 
+        : session.second_lineup_id;
+
+    history.push({
+      id: session.id,
+      firstLineupId: session.first_lineup_id,
+      secondLineupId: session.second_lineup_id,
+      firstArtistName: session.first_artist_name,
+      firstPerformanceName: session.first_song_title || '',
+      secondArtistName: session.second_artist_name,
+      secondPerformanceName: session.second_song_title || '',
+      firstVotes,
+      secondVotes,
+      winnerLineupId,
+      closedAt: session.closed_at
+    });
+  }
+
+  res.status(200).json({ history });
 });
 
 app.get('/api/runoff/vote-status', async (req, res) => {
@@ -1604,6 +1668,38 @@ app.post('/api/admin/clear-votes', requireRoles(['admin']), async (_req, res) =>
   await pool.query('DELETE FROM votes');
   const payload = await emitState('votes:cleared');
   return res.status(200).json({ message: 'Dati votazioni puliti', state: payload });
+});
+
+app.post('/api/admin/clear-all-data', requireRoles(['admin']), async (_req, res) => {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM votes');
+      await client.query('DELETE FROM runoff_votes');
+      await client.query('DELETE FROM runoff_sessions');
+      await client.query('DELETE FROM sessions');
+      await client.query('DELETE FROM lineup');
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    allVotesCompleted = false;
+    io.emit('lineup:updated', { lineup: [] });
+    const payload = await emitState('performance:reset');
+
+    return res.status(200).json({
+      message: 'Tutti i dati sono stati cancellati (utenti preservati)',
+      state: payload
+    });
+  } catch (err) {
+    console.error('[clear-all-data] Errore:', err);
+    return res.status(500).json({ error: 'Errore durante la cancellazione dei dati' });
+  }
 });
 
 app.post('/api/voting/complete', requireRoles(['gestione', 'admin']), async (_req, res) => {

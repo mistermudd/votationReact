@@ -48,6 +48,12 @@
         <p id="runoffStatus">Nessun ballottaggio attivo.</p>
         <div id="runoffResults"></div>
       </section>
+
+      <section class="card">
+        <h2>Storico Ballottaggi</h2>
+        <div id="runoffHistory"></div>
+        <p id="historyEmpty" style="color: #666;">Nessun ballottaggio completato.</p>
+      </section>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -58,6 +64,8 @@
       const feedback = document.getElementById('feedback');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffResults = document.getElementById('runoffResults');
+      const runoffHistory = document.getElementById('runoffHistory');
+      const historyEmpty = document.getElementById('historyEmpty');
 
       function optionLabel(row) {
         return `${row.performance_order}. ${row.artist_name}${row.song_title ? ` - ${row.song_title}` : ''}`;
@@ -120,6 +128,50 @@
         renderRunoffState(data);
       }
 
+      async function loadRunoffHistory() {
+        const response = await fetch('/api/runoff/history');
+        if (!response.ok) {
+          runoffHistory.innerHTML = '';
+          historyEmpty.style.display = '';
+          return;
+        }
+
+        const data = await response.json();
+        const history = data.history || [];
+
+        if (history.length === 0) {
+          runoffHistory.innerHTML = '';
+          historyEmpty.style.display = '';
+          return;
+        }
+
+        historyEmpty.style.display = 'none';
+        runoffHistory.innerHTML = history
+          .map((item, index) => {
+            const firstWon = item.winnerLineupId === item.firstLineupId;
+            const secondWon = item.winnerLineupId === item.secondLineupId;
+            const isTied = item.winnerLineupId === null;
+
+            return `
+              <div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #f9f7f3;">
+                <p style="margin: 0 0 8px 0; font-weight: 600; color: #333;">Ballottaggio ${index + 1}</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div style="padding: 8px; background: ${firstWon ? '#d4edda' : ''}; border-radius: 4px;">
+                    <p style="margin: 0 0 4px 0; font-weight: 500;">${item.firstArtistName}${item.firstPerformanceName ? ` - ${item.firstPerformanceName}` : ''}</p>
+                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.firstVotes.judge} | Pubblico: ${item.firstVotes.public} | Totale: <strong>${item.firstVotes.total}</strong></p>
+                  </div>
+                  <div style="padding: 8px; background: ${secondWon ? '#d4edda' : ''}; border-radius: 4px;">
+                    <p style="margin: 0 0 4px 0; font-weight: 500;">${item.secondArtistName}${item.secondPerformanceName ? ` - ${item.secondPerformanceName}` : ''}</p>
+                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.secondVotes.judge} | Pubblico: ${item.secondVotes.public} | Totale: <strong>${item.secondVotes.total}</strong></p>
+                  </div>
+                </div>
+                ${isTied ? '<p style="margin: 8px 0 0 0; font-size: 0.9em; color: #ff6b6b;"><strong>Risultato: Pareggio</strong></p>' : ''}
+              </div>
+            `;
+          })
+          .join('');
+      }
+
       document.getElementById('startBtn').addEventListener('click', async () => {
         const firstLineupId = Number(firstSelect.value);
         const secondLineupId = Number(secondSelect.value);
@@ -143,11 +195,15 @@
       socket.on('lineup:updated', (payload) => renderLineup(payload));
       socket.on('runoff:state', (payload) => renderRunoffState(payload));
       socket.on('runoff:started', (payload) => renderRunoffState(payload));
-      socket.on('runoff:closed', (payload) => renderRunoffState(payload));
+      socket.on('runoff:closed', async (payload) => {
+        renderRunoffState(payload);
+        await loadRunoffHistory();
+      });
       socket.on('runoff:vote-updated', (payload) => renderRunoffState(payload));
 
       loadLineup();
       loadRunoffState();
+      loadRunoffHistory();
     </script>
     <footer class="legal-signature">
       <p>Codice creato da Maikol Mudoni</p>
