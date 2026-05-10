@@ -63,8 +63,7 @@
 
         <label for="regiaTarget" style="display: block; margin-top: 12px;">Destinazione QR Regia</label>
         <select id="regiaTarget">
-          <option value="director" selected>Accesso diretto a Regia (/director.html)</option>
-          <option value="login">Passa dalla Login (/login.html)</option>
+          <option value="login" selected>Passa dalla Login (/login.html)</option>
         </select>
 
         <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
@@ -244,7 +243,7 @@
       }
 
       function getRegiaPath() {
-        return regiaTarget.value === 'login' ? '/login.html' : '/director.html';
+        return '/login.html';
       }
 
       function refreshRegiaDescription() {
@@ -264,7 +263,7 @@
         }
 
         const regiaUrl = joinUrl(normalized, getRegiaPath());
-        const giuriaUrl = joinUrl(normalized, '/runoff-judge.html');
+        const giuriaUrl = joinUrl(normalized, '/judge.html');
         const pubblicoUrl = joinUrl(normalized, '/public.html');
 
         await renderQr(regiaQr, regiaUrl);

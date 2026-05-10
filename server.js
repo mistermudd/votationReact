@@ -452,7 +452,7 @@ function canManageUserType(operatorRole, targetRole) {
 app.get('/api/users', requireRoles(['gestione', 'admin']), async (req, res) => {
   const whereClause = req.accessRole === 'gestione' ? "WHERE role = 'regia'" : '';
   const result = await pool.query(
-    `SELECT id, username, first_name, last_name, role, created_at, updated_at
+    `SELECT id, username, password, first_name, last_name, role, created_at, updated_at
       FROM app_users
       ${whereClause}
       ORDER BY role ASC, username ASC`
