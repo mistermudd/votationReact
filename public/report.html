@@ -62,7 +62,7 @@
         <div id="votes"></div>
       </section>
 
-      <section class="card">
+      <section id="runoffHistorySection" class="card" style="display: none;">
         <h2>Storico Ballottaggi</h2>
         <div id="runoffHistory"></div>
         <p id="historyEmpty" style="color: #999;">Nessun ballottaggio completato.</p>
@@ -82,6 +82,7 @@
       const downloadWeightedPdfEl = document.getElementById('downloadWeightedPdf');
       const summaryEl = document.getElementById('summary');
       const votesEl = document.getElementById('votes');
+      const runoffHistorySectionEl = document.getElementById('runoffHistorySection');
       const runoffHistoryEl = document.getElementById('runoffHistory');
       const historyEmptyEl = document.getElementById('historyEmpty');
       let lastReportData = null;
@@ -106,20 +107,27 @@
           const data = await response.json();
           renderRunoffHistory(data.history || []);
         } catch (_error) {
+          runoffHistorySectionEl.style.display = 'none';
           historyEmptyEl.style.display = '';
           runoffHistoryEl.innerHTML = '';
         }
       }
 
       function renderRunoffHistory(history) {
-        if (!history || history.length === 0) {
+        const uniqueHistory = Array.isArray(history)
+          ? Array.from(new Map(history.map((item) => [item.id, item])).values())
+          : [];
+
+        if (!uniqueHistory.length) {
+          runoffHistorySectionEl.style.display = 'none';
           historyEmptyEl.style.display = '';
           runoffHistoryEl.innerHTML = '';
           return;
         }
 
+        runoffHistorySectionEl.style.display = '';
         historyEmptyEl.style.display = 'none';
-        runoffHistoryEl.innerHTML = history
+        runoffHistoryEl.innerHTML = uniqueHistory
           .map((item, index) => {
             const firstWon = item.winnerLineupId === item.firstLineupId;
             const secondWon = item.winnerLineupId === item.secondLineupId;
