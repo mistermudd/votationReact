@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Votazione Live - Selezione Ruolo</title>
+    <title>Votazione Live - Menu</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -21,14 +21,12 @@
       <section class="card">
         <h2>Ruolo</h2>
         <div class="grid grid-2">
-          <button class="button button-primary" data-role="judge" data-allow="admin" type="button"><span>&#127942;</span> Giudice</button>
+          <button class="button button-primary" data-role="judge" data-allow="admin" type="button"><span>&#127942;</span>Pagina voto del giudice</button>
           <button class="button button-secondary" data-role="director" data-allow="gestione" type="button"><span>&#127909;</span> Conduzione</button>
-          <button class="button button-secondary" data-role="qrcode" data-allow="gestione" type="button"><span>&#128279;</span> QR Accessi</button>
-          <button class="button button-secondary" data-role="runoffManage" data-allow="gestione" type="button"><span>&#128512;</span> Ballottaggio</button>
-          <button class="button button-danger" data-role="performance" data-allow="admin" type="button"><span>&#127917;</span> Conduzione</button>
+          <button class="button button-secondary" data-role="qrcode" data-allow="gestione" type="button"><span>&#128279;</span> Schermata Accessi</button>
           <button class="button button-primary" data-role="lineup" data-allow="gestione" type="button"><span>&#128203;</span> Lineup</button>
           <button class="button button-secondary" data-role="report" data-allow="gestione" type="button"><span>&#128200;</span> Resoconto</button>
-          <button id="manageUsersBtn" class="button button-secondary" data-role="manageJudges" data-allow="gestione" type="button"><span>&#128100;</span> Aggiungi nuovo giudice</button>
+          <button id="manageUsersBtn" class="button button-secondary" data-role="manageJudges" data-allow="gestione" type="button"><span>&#128100;</span> Aggiungi nuovo utente</button>
         </div>
       </section>
     </div>
@@ -83,7 +81,6 @@
             judge: '/judge.html',
             director: '/director.html',
             qrcode: '/qr-access.html',
-            runoffManage: '/runoff-manage.html',
             public: '/public.html',
             performance: '/performance.html',
             lineup: '/lineup.html',

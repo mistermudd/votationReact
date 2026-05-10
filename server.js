@@ -1190,16 +1190,43 @@ app.delete('/api/lineup/:id', async (req, res) => {
     return res.status(400).json({ error: 'lineupId non valido' });
   }
 
-  const active = await getActiveSession();
-  if (active && active.lineup_id === lineupId) {
-    return res.status(409).json({ error: 'Impossibile eliminare artista in esibizione attiva' });
-  }
-
   try {
-    const result = await pool.query('DELETE FROM lineup WHERE id = $1', [lineupId]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Elemento lineup non trovato' });
+      const lineupResult = await client.query('SELECT id FROM lineup WHERE id = $1 LIMIT 1', [lineupId]);
+      if (lineupResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Elemento lineup non trovato' });
+      }
+
+      const runoffSessionsResult = await client.query(
+        `SELECT id FROM runoff_sessions WHERE first_lineup_id = $1 OR second_lineup_id = $1`,
+        [lineupId]
+      );
+      const runoffSessionIds = runoffSessionsResult.rows.map((row) => row.id);
+
+      if (runoffSessionIds.length > 0) {
+        await client.query('DELETE FROM runoff_votes WHERE runoff_session_id = ANY($1::int[])', [runoffSessionIds]);
+        await client.query('DELETE FROM runoff_sessions WHERE id = ANY($1::int[])', [runoffSessionIds]);
+      }
+
+      await client.query('DELETE FROM sessions WHERE lineup_id = $1', [lineupId]);
+      await client.query('DELETE FROM votes WHERE lineup_id = $1', [lineupId]);
+      await client.query('DELETE FROM runoff_votes WHERE selected_lineup_id = $1', [lineupId]);
+
+      const result = await client.query('DELETE FROM lineup WHERE id = $1', [lineupId]);
+      await client.query('COMMIT');
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'Elemento lineup non trovato' });
+      }
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
     io.emit('lineup:updated', { lineup: await getLineup() });
@@ -1208,7 +1235,7 @@ app.delete('/api/lineup/:id', async (req, res) => {
     return res.status(200).json({ message: 'Elemento lineup eliminato' });
   } catch (_error) {
     return res.status(409).json({
-      error: 'Elemento non eliminabile: esistono sessioni o voti collegati'
+      error: "Errore durante l'eliminazione della lineup"
     });
   }
 });
@@ -1446,9 +1473,20 @@ app.get('/api/runoff/state', async (_req, res) => {
 
 app.get('/api/runoff/history', requireRoles(['gestione', 'admin']), async (_req, res) => {
   const result = await pool.query(
-    `SELECT rs.id, rs.first_lineup_id, rs.second_lineup_id, rs.is_open, rs.created_at, rs.closed_at,
-            rs.first_artist_name, rs.first_song_title, rs.second_artist_name, rs.second_song_title
+    `SELECT
+        rs.id,
+        rs.first_lineup_id,
+        rs.second_lineup_id,
+        rs.is_open,
+        rs.created_at,
+        rs.closed_at,
+        a.artist_name AS first_artist_name,
+        a.song_title AS first_song_title,
+        b.artist_name AS second_artist_name,
+        b.song_title AS second_song_title
      FROM runoff_sessions rs
+     JOIN lineup a ON a.id = rs.first_lineup_id
+     JOIN lineup b ON b.id = rs.second_lineup_id
      WHERE rs.closed_at IS NOT NULL
      ORDER BY rs.closed_at DESC`
   );

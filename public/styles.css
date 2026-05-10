@@ -1241,6 +1241,21 @@ select {
 }
 
 @media (max-width: 720px) {
+  .top-right {
+    position: static;
+    display: flex;
+    justify-content: flex-end;
+    width: min(920px, 92vw);
+    margin: 12px auto 0;
+    padding: 0;
+  }
+
+  .top-right .button {
+    min-height: 44px;
+    min-width: 0;
+    width: auto;
+  }
+
   .grid-2 {
     grid-template-columns: 1fr;
   }
