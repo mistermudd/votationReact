@@ -129,28 +129,28 @@
         historyEmptyEl.style.display = 'none';
         runoffHistoryEl.innerHTML = uniqueHistory
           .map((item, index) => {
-            const firstWon = item.winnerLineupId === item.firstLineupId;
-            const secondWon = item.winnerLineupId === item.secondLineupId;
-            const isTied = item.winnerLineupId === null;
+            const winnerIds = Array.isArray(item.winnerLineupIds) ? item.winnerLineupIds : [];
+            const artists = Array.isArray(item.artists) ? item.artists : [];
 
             return `
               <div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #f9f7f3;">
                 <p style="margin: 0 0 8px 0; font-weight: 600; color: #333;">Ballottaggio ${index + 1}</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div style="padding: 8px; background: ${firstWon ? '#d4edda' : ''}; border-radius: 4px;">
-                    <p style="margin: 0 0 4px 0; font-weight: 500;">${escapeHtml(item.firstArtistName)}${
-              item.firstPerformanceName ? ` - ${escapeHtml(item.firstPerformanceName)}` : ''
-            }</p>
-                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.firstVotes.judge} | Pubblico: ${item.firstVotes.public} | Totale: <strong>${item.firstVotes.total}</strong></p>
-                  </div>
-                  <div style="padding: 8px; background: ${secondWon ? '#d4edda' : ''}; border-radius: 4px;">
-                    <p style="margin: 0 0 4px 0; font-weight: 500;">${escapeHtml(item.secondArtistName)}${
-              item.secondPerformanceName ? ` - ${escapeHtml(item.secondPerformanceName)}` : ''
-            }</p>
-                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.secondVotes.judge} | Pubblico: ${item.secondVotes.public} | Totale: <strong>${item.secondVotes.total}</strong></p>
-                  </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                  ${artists
+                    .map((artist) => {
+                      const isWinner = winnerIds.includes(artist.lineupId) && !item.isTied;
+                      return `
+                        <div style="padding: 8px; background: ${isWinner ? '#d4edda' : ''}; border-radius: 4px;">
+                          <p style="margin: 0 0 4px 0; font-weight: 500;">${escapeHtml(artist.artistName)}${
+                            artist.performanceName ? ` - ${escapeHtml(artist.performanceName)}` : ''
+                          }</p>
+                          <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${artist.votes.judge} | Pubblico: ${artist.votes.public} | Totale: <strong>${artist.votes.total}</strong></p>
+                        </div>
+                      `;
+                    })
+                    .join('')}
                 </div>
-                ${isTied ? '<p style="margin: 8px 0 0 0; font-size: 0.9em; color: #ff6b6b;"><strong>Risultato: Pareggio</strong></p>' : ''}
+                ${item.isTied ? '<p style="margin: 8px 0 0 0; font-size: 0.9em; color: #ff6b6b;"><strong>Risultato: Pareggio</strong></p>' : ''}
               </div>
             `;
           })

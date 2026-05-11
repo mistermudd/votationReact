@@ -37,6 +37,7 @@ pool.query(`
     id SERIAL PRIMARY KEY,
     first_lineup_id INTEGER NOT NULL REFERENCES lineup(id),
     second_lineup_id INTEGER NOT NULL REFERENCES lineup(id),
+    third_lineup_id INTEGER REFERENCES lineup(id),
     is_open BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     closed_at TIMESTAMPTZ
@@ -62,6 +63,9 @@ pool.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ
   );
+
+  ALTER TABLE runoff_sessions
+  ADD COLUMN IF NOT EXISTS third_lineup_id INTEGER REFERENCES lineup(id);
 `).catch((err) => {
   console.error('Errore inizializzazione DB:', err.message);
   process.exit(1);

@@ -133,6 +133,10 @@
             <label for="directorRunoffSecond">Secondo artista/gruppo</label>
             <select id="directorRunoffSecond"></select>
           </div>
+          <div>
+            <label for="directorRunoffThird">Terzo artista/gruppo opzionale</label>
+            <select id="directorRunoffThird"></select>
+          </div>
         </div>
 
         <div class="control-actions">
@@ -320,6 +324,7 @@
       const usersTableBody = document.getElementById('usersTableBody');
       const directorRunoffFirst = document.getElementById('directorRunoffFirst');
       const directorRunoffSecond = document.getElementById('directorRunoffSecond');
+      const directorRunoffThird = document.getElementById('directorRunoffThird');
       const directorRunoffStatus = document.getElementById('directorRunoffStatus');
       const directorRunoffResults = document.getElementById('directorRunoffResults');
       const directorRunoffFeedback = document.getElementById('directorRunoffFeedback');
@@ -473,6 +478,7 @@
         lineupSelect.innerHTML = '';
         directorRunoffFirst.innerHTML = '';
         directorRunoffSecond.innerHTML = '';
+        directorRunoffThird.innerHTML = '<option value="">Nessun terzo partecipante</option>';
 
         lineup.forEach((row) => {
           const option = document.createElement('option');
@@ -490,11 +496,18 @@
           secondOption.value = String(row.id);
           secondOption.textContent = label;
           directorRunoffSecond.appendChild(secondOption);
+
+          const thirdOption = document.createElement('option');
+          thirdOption.value = String(row.id);
+          thirdOption.textContent = label;
+          directorRunoffThird.appendChild(thirdOption);
         });
 
         if (lineup.length > 1) {
           directorRunoffSecond.selectedIndex = 1;
         }
+
+        directorRunoffThird.selectedIndex = 0;
       }
 
       function renderDirectorRunoff(state) {
@@ -720,13 +733,14 @@
       });
 
       document.getElementById('directorRunoffStart').addEventListener('click', async () => {
-        const firstLineupId = Number(directorRunoffFirst.value);
-        const secondLineupId = Number(directorRunoffSecond.value);
+        const lineupIds = [directorRunoffFirst.value, directorRunoffSecond.value, directorRunoffThird.value]
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0);
 
         const response = await fetch('/api/runoff/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ firstLineupId, secondLineupId })
+          body: JSON.stringify({ lineupIds })
         });
 
         const data = await response.json().catch(() => ({}));

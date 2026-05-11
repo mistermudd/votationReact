@@ -140,7 +140,6 @@
       let selectedScore = null;
       let canVote = false;
       let currentLineupId = null;
-      let previousLineupId = null;
       let runoffState = null;
       let currentJudgeName = '';
       let hasAlreadyVotedCurrentPerformance = false;
@@ -214,7 +213,7 @@
 
         if (runoffState && runoffState.hasActiveRunoff) {
           showScene.classList.add('show-state-runoff');
-          sceneCaption.textContent = 'Ballottaggio: due artisti a confronto.';
+          sceneCaption.textContent = 'Ballottaggio: artisti a confronto.';
           return;
         }
 
@@ -270,11 +269,6 @@
           allVotesCompleted: Boolean(payload.allVotesCompleted),
           sessionHasBeenOpened: Boolean(payload.sessionHasBeenOpened)
         };
-
-        // Se o lineup mudou, salva o anterior
-        if (currentLineupId !== null && currentLineupId !== latestState.currentLineupId) {
-          previousLineupId = currentLineupId;
-        }
 
         const artist = latestState.currentArtist;
         const open = latestState.isOpenForVoting;
@@ -381,20 +375,7 @@
         selectedScore = null;
         document.querySelectorAll('.score-btn').forEach((node) => node.classList.remove('selected'));
         hasAlreadyVotedCurrentPerformance = false;
-        
-        // Pulisci il voto precedente della giuria
-        if (previousLineupId && previousLineupId > 0) {
-          try {
-            await fetch('/api/judge/clear-vote', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lineupId: previousLineupId })
-            });
-          } catch (err) {
-            console.error('Errore nella pulizia del voto precedente:', err);
-          }
-        }
-        
+
         await onStateEvent(payload);
       });
       socket.on('voting:closed', (payload) => onStateEvent(payload));

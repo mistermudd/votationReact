@@ -14,7 +14,7 @@
     <div class="container fade-in">
       <section class="hero">
         <h1><span class="page-icon">&#9878;</span> Gestione Ballottaggio</h1>
-        <p>Seleziona due artisti e avvia una sfida se c'e un pareggio.</p>
+        <p>Seleziona due o tre artisti e avvia una sfida se c'e un pareggio.</p>
       </section>
 
       <section class="card">
@@ -27,6 +27,10 @@
           <div>
             <label for="secondLineupId">Secondo artista/gruppo</label>
             <select id="secondLineupId"></select>
+          </div>
+          <div>
+            <label for="thirdLineupId">Terzo artista/gruppo opzionale</label>
+            <select id="thirdLineupId"></select>
           </div>
         </div>
 
@@ -61,6 +65,7 @@
       const socket = io();
       const firstSelect = document.getElementById('firstLineupId');
       const secondSelect = document.getElementById('secondLineupId');
+      const thirdSelect = document.getElementById('thirdLineupId');
       const feedback = document.getElementById('feedback');
       const runoffStatus = document.getElementById('runoffStatus');
       const runoffResults = document.getElementById('runoffResults');
@@ -75,6 +80,7 @@
         const lineup = payload.lineup || [];
         firstSelect.innerHTML = '';
         secondSelect.innerHTML = '';
+        thirdSelect.innerHTML = '<option value="">Nessun terzo partecipante</option>';
 
         lineup.forEach((row) => {
           const first = document.createElement('option');
@@ -86,11 +92,18 @@
           second.value = String(row.id);
           second.textContent = optionLabel(row);
           secondSelect.appendChild(second);
+
+          const third = document.createElement('option');
+          third.value = String(row.id);
+          third.textContent = optionLabel(row);
+          thirdSelect.appendChild(third);
         });
 
         if (lineup.length > 1) {
           secondSelect.selectedIndex = 1;
         }
+
+        thirdSelect.selectedIndex = 0;
       }
 
       function renderRunoffState(state) {
@@ -148,24 +161,23 @@
         historyEmpty.style.display = 'none';
         runoffHistory.innerHTML = history
           .map((item, index) => {
-            const firstWon = item.winnerLineupId === item.firstLineupId;
-            const secondWon = item.winnerLineupId === item.secondLineupId;
-            const isTied = item.winnerLineupId === null;
+            const winnerIds = Array.isArray(item.winnerLineupIds) ? item.winnerLineupIds : [];
+            const artists = Array.isArray(item.artists) ? item.artists : [];
 
             return `
               <div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #f9f7f3;">
                 <p style="margin: 0 0 8px 0; font-weight: 600; color: #333;">Ballottaggio ${index + 1}</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div style="padding: 8px; background: ${firstWon ? '#d4edda' : ''}; border-radius: 4px;">
-                    <p style="margin: 0 0 4px 0; font-weight: 500;">${item.firstArtistName}${item.firstPerformanceName ? ` - ${item.firstPerformanceName}` : ''}</p>
-                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.firstVotes.judge} | Pubblico: ${item.firstVotes.public} | Totale: <strong>${item.firstVotes.total}</strong></p>
-                  </div>
-                  <div style="padding: 8px; background: ${secondWon ? '#d4edda' : ''}; border-radius: 4px;">
-                    <p style="margin: 0 0 4px 0; font-weight: 500;">${item.secondArtistName}${item.secondPerformanceName ? ` - ${item.secondPerformanceName}` : ''}</p>
-                    <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${item.secondVotes.judge} | Pubblico: ${item.secondVotes.public} | Totale: <strong>${item.secondVotes.total}</strong></p>
-                  </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+                  ${artists
+                    .map((artist) => `
+                      <div style="padding: 8px; background: ${winnerIds.includes(artist.lineupId) && !item.isTied ? '#d4edda' : ''}; border-radius: 4px;">
+                        <p style="margin: 0 0 4px 0; font-weight: 500;">${artist.artistName}${artist.performanceName ? ` - ${artist.performanceName}` : ''}</p>
+                        <p style="margin: 0; font-size: 0.9em; color: #666;">Giuria: ${artist.votes.judge} | Pubblico: ${artist.votes.public} | Totale: <strong>${artist.votes.total}</strong></p>
+                      </div>
+                    `)
+                    .join('')}
                 </div>
-                ${isTied ? '<p style="margin: 8px 0 0 0; font-size: 0.9em; color: #ff6b6b;"><strong>Risultato: Pareggio</strong></p>' : ''}
+                ${item.isTied ? '<p style="margin: 8px 0 0 0; font-size: 0.9em; color: #ff6b6b;"><strong>Risultato: Pareggio</strong></p>' : ''}
               </div>
             `;
           })
@@ -173,13 +185,14 @@
       }
 
       document.getElementById('startBtn').addEventListener('click', async () => {
-        const firstLineupId = Number(firstSelect.value);
-        const secondLineupId = Number(secondSelect.value);
+        const lineupIds = [firstSelect.value, secondSelect.value, thirdSelect.value]
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0);
 
         const response = await fetch('/api/runoff/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ firstLineupId, secondLineupId })
+          body: JSON.stringify({ lineupIds })
         });
 
         const data = await response.json();

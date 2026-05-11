@@ -99,8 +99,8 @@ async function restoreFromGist() {
       }
       for (const r of data.runoff_sessions || []) {
         await client.query(
-          'INSERT INTO runoff_sessions (id, first_lineup_id, second_lineup_id, is_open, created_at, closed_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
-          [r.id, r.first_lineup_id, r.second_lineup_id, r.is_open, r.created_at, r.closed_at]
+          'INSERT INTO runoff_sessions (id, first_lineup_id, second_lineup_id, third_lineup_id, is_open, created_at, closed_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
+          [r.id, r.first_lineup_id, r.second_lineup_id, r.third_lineup_id || null, r.is_open, r.created_at, r.closed_at]
         );
       }
       for (const r of data.runoff_votes || []) {
@@ -637,21 +637,72 @@ async function getActiveRunoffSession() {
         rs.id,
         rs.first_lineup_id,
         rs.second_lineup_id,
+        rs.third_lineup_id,
         rs.is_open,
         rs.created_at,
         rs.closed_at,
         a.artist_name AS first_artist_name,
         a.song_title AS first_song_title,
         b.artist_name AS second_artist_name,
-        b.song_title AS second_song_title
+        b.song_title AS second_song_title,
+        c.artist_name AS third_artist_name,
+        c.song_title AS third_song_title
       FROM runoff_sessions rs
       JOIN lineup a ON a.id = rs.first_lineup_id
       JOIN lineup b ON b.id = rs.second_lineup_id
+      LEFT JOIN lineup c ON c.id = rs.third_lineup_id
       WHERE rs.closed_at IS NULL
       ORDER BY rs.id DESC
       LIMIT 1`
   );
   return result.rows[0] || null;
+}
+
+function getRunoffSessionLineupIds(session) {
+  return [session.first_lineup_id, session.second_lineup_id, session.third_lineup_id]
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function buildRunoffArtists(session, counts) {
+  const artistEntries = [
+    {
+      lineupId: session.first_lineup_id,
+      artistName: session.first_artist_name,
+      performanceName: session.first_song_title || ''
+    },
+    {
+      lineupId: session.second_lineup_id,
+      artistName: session.second_artist_name,
+      performanceName: session.second_song_title || ''
+    },
+    session.third_lineup_id
+      ? {
+          lineupId: session.third_lineup_id,
+          artistName: session.third_artist_name,
+          performanceName: session.third_song_title || ''
+        }
+      : null
+  ].filter(Boolean);
+
+  return artistEntries.map((artist) => ({
+    ...artist,
+    votes: counts[artist.lineupId] || { judge: 0, public: 0, total: 0 }
+  }));
+}
+
+function getRunoffWinners(artists) {
+  const highestTotal = artists.reduce((maxValue, artist) => Math.max(maxValue, Number(artist.votes?.total || 0)), 0);
+  const winners = artists
+    .filter((artist) => Number(artist.votes?.total || 0) === highestTotal)
+    .map((artist) => artist.lineupId);
+
+  return {
+    highestTotal,
+    winnerLineupIds: highestTotal > 0 && winners.length === 1 ? winners : winners,
+    winnerLineupId: highestTotal > 0 && winners.length === 1 ? winners[0] : null,
+    isTied: winners.length !== 1
+  };
 }
 
 async function getRunoffVoteCounts(sessionId) {
@@ -700,27 +751,8 @@ async function buildRunoffState() {
   }
 
   const counts = await getRunoffVoteCounts(session.id);
-  const artists = [
-    {
-      lineupId: session.first_lineup_id,
-      artistName: session.first_artist_name,
-      performanceName: session.first_song_title || '',
-      votes: counts[session.first_lineup_id] || { judge: 0, public: 0, total: 0 }
-    },
-    {
-      lineupId: session.second_lineup_id,
-      artistName: session.second_artist_name,
-      performanceName: session.second_song_title || '',
-      votes: counts[session.second_lineup_id] || { judge: 0, public: 0, total: 0 }
-    }
-  ];
-
-  const winnerLineupId =
-    artists[0].votes.total === artists[1].votes.total
-      ? null
-      : artists[0].votes.total > artists[1].votes.total
-        ? artists[0].lineupId
-        : artists[1].lineupId;
+  const artists = buildRunoffArtists(session, counts);
+  const { winnerLineupId, winnerLineupIds, isTied } = getRunoffWinners(artists);
 
   return {
     hasActiveRunoff: true,
@@ -728,7 +760,10 @@ async function buildRunoffState() {
     isOpenForVoting: Boolean(session.is_open),
     createdAt: session.created_at,
     artists,
-    winnerLineupId
+    lineupIds: getRunoffSessionLineupIds(session),
+    winnerLineupId,
+    winnerLineupIds,
+    isTied
   };
 }
 
@@ -1202,7 +1237,7 @@ app.delete('/api/lineup/:id', async (req, res) => {
       }
 
       const runoffSessionsResult = await client.query(
-        `SELECT id FROM runoff_sessions WHERE first_lineup_id = $1 OR second_lineup_id = $1`,
+        `SELECT id FROM runoff_sessions WHERE first_lineup_id = $1 OR second_lineup_id = $1 OR third_lineup_id = $1`,
         [lineupId]
       );
       const runoffSessionIds = runoffSessionsResult.rows.map((row) => row.id);
@@ -1477,16 +1512,20 @@ app.get('/api/runoff/history', requireRoles(['gestione', 'admin']), async (_req,
         rs.id,
         rs.first_lineup_id,
         rs.second_lineup_id,
+        rs.third_lineup_id,
         rs.is_open,
         rs.created_at,
         rs.closed_at,
         a.artist_name AS first_artist_name,
         a.song_title AS first_song_title,
         b.artist_name AS second_artist_name,
-        b.song_title AS second_song_title
+        b.song_title AS second_song_title,
+        c.artist_name AS third_artist_name,
+        c.song_title AS third_song_title
      FROM runoff_sessions rs
      JOIN lineup a ON a.id = rs.first_lineup_id
      JOIN lineup b ON b.id = rs.second_lineup_id
+     LEFT JOIN lineup c ON c.id = rs.third_lineup_id
      WHERE rs.closed_at IS NOT NULL
      ORDER BY rs.closed_at DESC`
   );
@@ -1494,26 +1533,16 @@ app.get('/api/runoff/history', requireRoles(['gestione', 'admin']), async (_req,
   const history = [];
   for (const session of result.rows) {
     const counts = await getRunoffVoteCounts(session.id);
-    const firstVotes = counts[session.first_lineup_id] || { judge: 0, public: 0, total: 0 };
-    const secondVotes = counts[session.second_lineup_id] || { judge: 0, public: 0, total: 0 };
-    
-    const winnerLineupId = firstVotes.total === secondVotes.total 
-      ? null 
-      : firstVotes.total > secondVotes.total 
-        ? session.first_lineup_id 
-        : session.second_lineup_id;
+    const artists = buildRunoffArtists(session, counts);
+    const { winnerLineupId, winnerLineupIds, isTied } = getRunoffWinners(artists);
 
     history.push({
       id: session.id,
-      firstLineupId: session.first_lineup_id,
-      secondLineupId: session.second_lineup_id,
-      firstArtistName: session.first_artist_name,
-      firstPerformanceName: session.first_song_title || '',
-      secondArtistName: session.second_artist_name,
-      secondPerformanceName: session.second_song_title || '',
-      firstVotes,
-      secondVotes,
+      lineupIds: getRunoffSessionLineupIds(session),
+      artists,
       winnerLineupId,
+      winnerLineupIds,
+      isTied,
       closedAt: session.closed_at
     });
   }
@@ -1557,30 +1586,31 @@ app.get('/api/runoff/vote-status', async (req, res) => {
 });
 
 app.post('/api/runoff/start', requireRoles(['gestione', 'admin']), async (req, res) => {
-  const firstLineupId = Number(req.body.firstLineupId);
-  const secondLineupId = Number(req.body.secondLineupId);
+  const lineupIds = Array.isArray(req.body.lineupIds)
+    ? req.body.lineupIds.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    : [req.body.firstLineupId, req.body.secondLineupId, req.body.thirdLineupId]
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
 
-  if (!Number.isInteger(firstLineupId) || !Number.isInteger(secondLineupId)) {
-    return res.status(400).json({ error: 'Seleziona due artisti validi' });
-  }
+  const uniqueLineupIds = Array.from(new Set(lineupIds));
 
-  if (firstLineupId === secondLineupId) {
-    return res.status(400).json({ error: 'Gli artisti devono essere diversi' });
+  if (uniqueLineupIds.length < 2 || uniqueLineupIds.length > 3) {
+    return res.status(400).json({ error: 'Seleziona due o tre artisti validi' });
   }
 
   const lineupResult = await pool.query(
-    `SELECT id FROM lineup WHERE id IN ($1, $2)`,
-    [firstLineupId, secondLineupId]
+    `SELECT id FROM lineup WHERE id = ANY($1::int[])`,
+    [uniqueLineupIds]
   );
 
-  if (lineupResult.rows.length !== 2) {
+  if (lineupResult.rows.length !== uniqueLineupIds.length) {
     return res.status(404).json({ error: 'Artista non trovato in lineup' });
   }
 
   await closeActiveRunoffSession();
   await pool.query(
-    `INSERT INTO runoff_sessions (first_lineup_id, second_lineup_id, is_open) VALUES ($1, $2, TRUE)`,
-    [firstLineupId, secondLineupId]
+    `INSERT INTO runoff_sessions (first_lineup_id, second_lineup_id, third_lineup_id, is_open) VALUES ($1, $2, $3, TRUE)`,
+    [uniqueLineupIds[0], uniqueLineupIds[1], uniqueLineupIds[2] || null]
   );
 
   const state = await emitRunoffState('runoff:started');
@@ -1634,7 +1664,7 @@ app.post('/api/runoff/vote', async (req, res) => {
     return res.status(400).json({ error: 'selectedLineupId non valido' });
   }
 
-  if (selectedLineupId !== session.first_lineup_id && selectedLineupId !== session.second_lineup_id) {
+  if (!getRunoffSessionLineupIds(session).includes(selectedLineupId)) {
     return res.status(400).json({ error: 'Artista non valido per questo ballottaggio' });
   }
 
