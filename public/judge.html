@@ -285,7 +285,7 @@
 
         artistLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? `Artista/Gruppo in esibizione: ${artist}` : '';
         artistLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) ? '' : 'none';
-        songLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? `Nome esibizione: ${song}` : '';
+        songLabel.textContent = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? `Talento: ${song}` : '';
         songLabel.style.display = hasActivePerformance && (open || !sessionHasBeenOpened) && !(runoffState && runoffState.hasActiveRunoff) && song ? '' : 'none';
 
         canVote = !allVotesCompleted && open && Boolean(artist) && !alreadyVoted;

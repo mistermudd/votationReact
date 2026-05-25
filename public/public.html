@@ -268,7 +268,7 @@
         const hasRunoff = runoffState && runoffState.hasActiveRunoff;
         artistLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? `Artista/Gruppo in esibizione: ${artist}` : '';
         artistLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff ? '' : 'none';
-        songLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? `Nome esibizione: ${song}` : '';
+        songLabel.textContent = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? `Talento: ${song}` : '';
         songLabel.style.display = hasActivePerf && (isOpenForVoting || !sessionHasBeenOpened) && !hasRunoff && song ? '' : 'none';
 
         if (!hasActivePerf) {
