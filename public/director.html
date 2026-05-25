@@ -62,6 +62,71 @@
         <p>Da qui avvii prima l'esibizione e poi apri la votazione quando vuoi.</p>
       </section>
 
+      <section class="card" style="max-width: 480px;">
+        <h2>Stato live</h2>
+        <p id="liveArtist" class="performance-artist">Nessun artista/gruppo selezionato.</p>
+        <p id="liveSong" class="performance-song" style="display: none;"></p>
+        <p id="liveStatus">Votazione chiusa.</p>
+        <div id="directorWaitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
+          <div class="waiting-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
+          <div class="scene-light"></div>
+          <div class="scene-stage"></div>
+          <div class="scene-curtain left"></div>
+          <div class="scene-curtain right"></div>
+          <div class="scene-singer">
+            <div class="head"></div>
+            <div class="body"></div>
+            <div class="arm left"></div>
+            <div class="arm right"></div>
+            <div class="leg left"></div>
+            <div class="leg right"></div>
+          </div>
+          <div class="scene-mic">
+            <span class="mic-head"></span>
+            <span class="mic-stand"></span>
+          </div>
+          <div class="scene-band" aria-hidden="true">
+            <div class="scene-player left">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="guitar"></div>
+            </div>
+            <div class="scene-player right">
+              <div class="head"></div>
+              <div class="body"></div>
+              <div class="leg l1"></div>
+              <div class="leg l2"></div>
+              <div class="drum"></div>
+              <div class="drum-stick s1"></div>
+              <div class="drum-stick s2"></div>
+            </div>
+          </div>
+          <div class="scene-mascot">
+            <div class="head"></div>
+            <div class="body"></div>
+          </div>
+          <div class="scene-notes" aria-hidden="true">
+            <span class="scene-note n1">♪</span>
+            <span class="scene-note n2">♫</span>
+            <span class="scene-note n3">♬</span>
+            <span class="scene-note n4">♪</span>
+            <span class="scene-note n5">♫</span>
+          </div>
+          <div class="scene-bubble">E tutto!</div>
+          <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
+        </div>
+        <p id="liveCount">Voti totali: 0</p>
+        <p id="liveAverage">Media totale: 0</p>
+        <p id="judgeStats">Giudici: 0 voti | media 0</p>
+        <p id="publicStats">Pubblico: 0 voti | media 0</p>
+      </section>
+
       <section class="card">
         <h2>Attiva esibizione</h2>
         <label for="lineupSelect">Artista/Gruppo in lineup</label>
@@ -155,70 +220,7 @@
         <p id="directorRunoffFeedback"></p>
       </section>
 
-      <section class="card">
-        <h2>Stato live</h2>
-        <p id="liveArtist" class="performance-artist">Nessun artista/gruppo selezionato.</p>
-        <p id="liveSong" class="performance-song" style="display: none;"></p>
-        <p id="liveStatus">Votazione chiusa.</p>
-        <div id="directorWaitingWrap" class="waiting-wrap" style="display: none;" aria-live="polite">
-          <div class="waiting-loader" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
-        <div id="showScene" class="show-scene show-state-closed" aria-hidden="true">
-          <div class="scene-light"></div>
-          <div class="scene-stage"></div>
-          <div class="scene-curtain left"></div>
-          <div class="scene-curtain right"></div>
-          <div class="scene-singer">
-            <div class="head"></div>
-            <div class="body"></div>
-            <div class="arm left"></div>
-            <div class="arm right"></div>
-            <div class="leg left"></div>
-            <div class="leg right"></div>
-          </div>
-          <div class="scene-mic">
-            <span class="mic-head"></span>
-            <span class="mic-stand"></span>
-          </div>
-          <div class="scene-band" aria-hidden="true">
-            <div class="scene-player left">
-              <div class="head"></div>
-              <div class="body"></div>
-              <div class="leg l1"></div>
-              <div class="leg l2"></div>
-              <div class="guitar"></div>
-            </div>
-            <div class="scene-player right">
-              <div class="head"></div>
-              <div class="body"></div>
-              <div class="leg l1"></div>
-              <div class="leg l2"></div>
-              <div class="drum"></div>
-              <div class="drum-stick s1"></div>
-              <div class="drum-stick s2"></div>
-            </div>
-          </div>
-          <div class="scene-mascot">
-            <div class="head"></div>
-            <div class="body"></div>
-          </div>
-          <div class="scene-notes" aria-hidden="true">
-            <span class="scene-note n1">♪</span>
-            <span class="scene-note n2">♫</span>
-            <span class="scene-note n3">♬</span>
-            <span class="scene-note n4">♪</span>
-            <span class="scene-note n5">♫</span>
-          </div>
-          <div class="scene-bubble">E tutto!</div>
-          <p id="sceneCaption" class="scene-caption">Tende chiuse. In attesa.</p>
-        </div>
-        <p id="liveCount">Voti totali: 0</p>
-        <p id="liveAverage">Media totale: 0</p>
-        <p id="judgeStats">Giudici: 0 voti | media 0</p>
-        <p id="publicStats">Pubblico: 0 voti | media 0</p>
-      </section>
+      
 
       <section id="adminControls" class="card" style="display: none;">
         <h2>Controlli Admin</h2>
